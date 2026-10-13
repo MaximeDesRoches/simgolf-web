@@ -29,6 +29,9 @@ the game, and it never leaves your computer.
   save or import one.
 - To start over with different files, press **Ctrl+F8** and use the button at
   the bottom of the panel.
+- To turn off scrolling the course by touching a screen edge with the
+  pointer, press **Ctrl+F8** and untick it under Settings (or add
+  `?edgescroll=0` to the address). The arrow keys still scroll.
 - Clearing your browser's site data for the page removes the unpacked game
   and your saves (download the saves first).
 

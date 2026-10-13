@@ -308,6 +308,81 @@ static nu xy(int x, int y) { return ((nu)(uint16_t)y << 16) | (uint16_t)x; }
 
 #define EDGE_SCROLL_RELEASE 24  // px from the edge where the course view stops scrolling
 
+// Pulls the pointer in from the screen edges so the course view stops
+// edge-scrolling (golf scrolls while the pointer is on the outermost pixel).
+static void release_edges(void) {
+  const int margin = EDGE_SCROLL_RELEASE;
+  int x = g_mouse_x < margin ? margin : g_mouse_x > WIN_SCREEN_W - 1 - margin ? WIN_SCREEN_W - 1 - margin : g_mouse_x;
+  int y = g_mouse_y < margin ? margin : g_mouse_y > WIN_SCREEN_H - 1 - margin ? WIN_SCREEN_H - 1 - margin : g_mouse_y;
+  if (x != g_mouse_x || y != g_mouse_y) {
+    g_mouse_x = x;
+    g_mouse_y = y;
+    win_post(0x200, mouse_keys(), xy(g_mouse_x, g_mouse_y));
+  }
+}
+
+// Edge scrolling, a player setting (the Saves panel, or ?edgescroll=0/1;
+// remembered in localStorage as simgolf-edge-scroll, on unless "0").
+// golf scrolls the course view only while the pointer is on the outermost
+// pixel, which a scaled canvas makes hard to hit, and in the bars beside or
+// above a 4:3 canvas the pointer isn't over the game at all. So the page
+// tracks the pointer itself: within 2 CSS px of a canvas edge, or past it in
+// the bars, counts as on that edge. Returns 0x100 when the setting is off,
+// 0x200 while the pointer is outside the browser window (or the tab lost
+// focus), else the x edge (bits 0-1: 0 left, 1 none, 2 right) and the y edge
+// (bits 2-3, likewise).
+EM_JS(int, js_edge_state, (void), {
+  var s = Module.simgolfEdge;
+  if (!s) {
+    s = Module.simgolfEdge = { x: 0, y: 0, out: false };
+    if (Module.edgeScroll === undefined) {
+      var m = /[?&]edgescroll=([^&]*)/.exec(location.search);
+      var v = null;
+      try { v = m ? decodeURIComponent(m[1]) : localStorage.getItem('simgolf-edge-scroll'); } catch (e) {}
+      Module.edgeScroll = !/^(0|off|false|no)$/i.test(v || '');
+    }
+    var c = Module.canvas;
+    document.addEventListener('mousemove', function (e) {
+      s.out = false;
+      var t = e.target;
+      if (t !== c && t !== document.body && t !== document.documentElement) { s.x = s.y = 0; return; }
+      var r = c.getBoundingClientRect(), band = 2;
+      s.x = e.clientX <= r.left + band ? -1 : e.clientX >= r.right - band ? 1 : 0;
+      s.y = e.clientY <= r.top + band ? -1 : e.clientY >= r.bottom - band ? 1 : 0;
+    }, true);
+    document.addEventListener('mouseout', function (e) { if (!e.relatedTarget) s.out = true; });
+    addEventListener('blur', function () { s.out = true; });
+  }
+  if (!Module.edgeScroll) return 0x100;
+  if (s.out) return 0x200;
+  return (s.x + 1) | ((s.y + 1) << 2);
+});
+
+static void edge_scroll(void) {
+  int st = js_edge_state();
+  int x = g_mouse_x, y = g_mouse_y;
+  if (st & 0x100) {
+    // Off: keep the pointer off the outermost pixel so golf never scrolls.
+    int dx = gdi_wide_dx();
+    if (x < 1 - dx) x = 1 - dx;
+    if (x > WIN_SCREEN_W - 2 - dx) x = WIN_SCREEN_W - 2 - dx;
+    if (y < 1) y = 1;
+    if (y > WIN_SCREEN_H - 2) y = WIN_SCREEN_H - 2;
+  } else if (st & 0x200) {
+    release_edges();
+    return;
+  } else {
+    int ex = (st & 3) - 1, ey = ((st >> 2) & 3) - 1;
+    if (ex) x = (ex < 0 ? 0 : WIN_SCREEN_W - 1) - gdi_wide_dx();
+    if (ey) y = ey < 0 ? 0 : WIN_SCREEN_H - 1;
+  }
+  if (x != g_mouse_x || y != g_mouse_y) {
+    g_mouse_x = x;
+    g_mouse_y = y;
+    win_post(0x200, mouse_keys(), xy(g_mouse_x, g_mouse_y));
+  }
+}
+
 static void pump_sdl(void) {
   SDL_Event e;
   while (SDL_PollEvent(&e)) {
@@ -322,16 +397,10 @@ static void pump_sdl(void) {
         // here the last position would stay on the edge and the course view
         // would edge-scroll forever. Leaving the canvas (or the tab losing
         // focus) pulls the position in from the edges instead.
-        if (e.window.event == SDL_WINDOWEVENT_LEAVE || e.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
-          const int margin = EDGE_SCROLL_RELEASE;
-          int x = g_mouse_x < margin ? margin : g_mouse_x > WIN_SCREEN_W - 1 - margin ? WIN_SCREEN_W - 1 - margin : g_mouse_x;
-          int y = g_mouse_y < margin ? margin : g_mouse_y > WIN_SCREEN_H - 1 - margin ? WIN_SCREEN_H - 1 - margin : g_mouse_y;
-          if (x != g_mouse_x || y != g_mouse_y) {
-            g_mouse_x = x;
-            g_mouse_y = y;
-            win_post(0x200, mouse_keys(), xy(g_mouse_x, g_mouse_y));
-          }
-        }
+        // edge_scroll() then puts it back on the edge if the pointer only
+        // moved into the bars beside the canvas.
+        if (e.window.event == SDL_WINDOWEVENT_LEAVE || e.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+          release_edges();
         break;
       case SDL_MOUSEBUTTONDOWN:
       case SDL_MOUSEBUTTONUP: {
@@ -375,6 +444,7 @@ static void pump_sdl(void) {
         break;
     }
   }
+  edge_scroll();
 }
 
 static void run_win_timers(void) {
