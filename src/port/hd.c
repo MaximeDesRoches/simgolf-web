@@ -112,7 +112,8 @@ int hd_present(const uint16_t *screen) {
     screen = frame;
   }
   hd_js_text(runs, nruns);
-  static uint8_t mask[WIN_SCREEN_W * WIN_SCREEN_H * 2];
+  static uint8_t *mask;
+  if (!mask) mask = malloc(WIN_SCREEN_W * WIN_SCREEN_H * 2);
   int terrain = 0;
   Surf c;
   if (hd_js_terrain_on() && terrain_cache(&c) && c.w == WIN_SCREEN_W && c.h == WIN_SCREEN_H) {

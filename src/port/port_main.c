@@ -55,6 +55,24 @@ void jgld_attach(void) {
   icall_lookup(JGLD_DLLMAIN)(0x10000000u, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
+// The player quit (Exit on the main menu, then the credits): there's no
+// window to close, so save what's pending and cover the last frame with a
+// way back in. A page can supply its own Module.onGameExit.
+EM_JS(void, game_exited, (void), {
+  if (Module.persistFlush) Module.persistFlush();
+  if (Module.onGameExit) { Module.onGameExit(); return; }
+  const back = document.createElement('div');
+  back.id = 'game-exit';
+  back.style.cssText = 'position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;' +
+    'justify-content:center;background:rgba(0,0,0,.6);font:16px system-ui,sans-serif;color:#eee';
+  back.innerHTML = '<div style="text-align:center;background:#1b1b1b;border:1px solid #444;border-radius:8px;' +
+    'padding:22px 28px;box-shadow:0 6px 24px #000a"><p style="margin:0 0 14px">Thanks for playing SimGolf.</p>' +
+    '<button style="font:15px system-ui,sans-serif;padding:7px 18px;border-radius:5px;border:1px solid #666;' +
+    'background:#2c2c2c;color:#eee;cursor:pointer">Play again</button></div>';
+  back.querySelector('button').onclick = () => location.reload();
+  document.body.appendChild(back);
+});
+
 int main(void) {
   port_quiet = EM_ASM_INT({ return Module.quiet ? 1 : 0; });
   fs_init();
@@ -69,6 +87,6 @@ int main(void) {
   uint32_t r = icall_lookup(GOLF_WINMAIN)(PORT_GOLF_BASE, 0, (uint32_t)(uintptr_t)"", 10,
                                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
   fprintf(stderr, "WinMain returned %u\n", r);
-  port_trace_dump(200);
+  game_exited();
   return 0;
 }

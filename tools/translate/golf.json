@@ -56,6 +56,28 @@
   },
   "skip": [],
   "patches": {
+    "FUN_0044a6e0": [
+      [
+        "if (DAT_00820f30 == 800) {",
+        "if (DAT_00820f34 == 600) {"
+      ]
+    ],
+    "FUN_00404970": [
+      [
+        "return (DAT_00822c8c * param_1 + 0xa0) / 0x140;",
+        "return (800 * param_1 + 0xa0) / 0x140;"
+      ]
+    ],
+    "FUN_0045baf0": [
+      [
+        "DAT_00822c8c = 800;",
+        "DAT_00822c8c = port_screen_w();"
+      ],
+      [
+        "iVar1 = FUN_00404970(0xf0);\n    iVar7 = FUN_00404970(0x140);",
+        "iVar1 = DAT_00822c90;\n    iVar7 = DAT_00822c8c;"
+      ]
+    ],
     "FUN_0049ccc0": [
       [
         "FUN_0049cf50(iVar1)",
@@ -74,6 +96,10 @@
       [
         "FUN_004498a0(DAT_004c2ba0,DAT_004c2ba4,DAT_004c2844,DAT_005685f4);",
         "FUN_004498a0(DAT_004c2ba0,DAT_004c2ba4,DAT_004c2844,I2F(*(int *)0x5685f4));"
+      ],
+      [
+        "if (0x31e < iStack_103c) {",
+        "if (port_screen_w() - 2 < iStack_103c) {"
       ]
     ],
     "FUN_00470a60": [
@@ -98,6 +124,16 @@
       [
         "(DAT_0053a450 + 2) * (DAT_00822c88 + 2)",
         "(*(int *)0x53a450 + 2) * (DAT_00822c88 + 2)"
+      ]
+    ],
+    "FUN_00483340": [
+      [
+        "(**(code **)(DAT_0083ac88 + 4))(piVar1);",
+        "(**(code **)(*(int *)0x83ac88 + 4))((int *)0x83ac88,piVar1);"
+      ],
+      [
+        "(*(code *)**(undefined4 **)(*(int *)(*DAT_0083ac90 + 4) + (int)DAT_0083ac90))(1);",
+        "this = (undefined4 *)(*(int *)(*DAT_0083ac90 + 4) + (int)DAT_0083ac90);\n          (**(code **)*this)(this,1);"
       ]
     ]
   },

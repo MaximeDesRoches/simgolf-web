@@ -190,6 +190,7 @@ static inline double U2D(uint32_t lo, uint32_t hi) {
 #define U2Q(lo, hi) (((uint64_t)(hi) << 32) | (uint32_t)(lo))
 
 void port_halt(const char *fn, const char *why);
+int port_screen_w(void);  // win32.c: 800, or wider with ?wide
 
 void port_ret_log(uint32_t fn, int where, uint32_t value);
 void port_trace_dump(int n);

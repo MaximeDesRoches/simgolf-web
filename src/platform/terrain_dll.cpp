@@ -1064,6 +1064,8 @@ void extentsFor(int w, int h, float &x, float &y) {
   if (w == 1024 && h == 768) { x = 1810.1934f; y = 1357.645f; }
   else if (w == 1280 && h == 1024) { x = 1740.5706f; y = 1392.4564f; }
   else { x = 1767.767f; y = 1325.8252f; }
+  // ?wide: same scale as 800x600, wider
+  if (h == 600 && w > 800 && w <= 1280) x = x * w / 800;
 }
 
 }  // namespace
@@ -1173,7 +1175,8 @@ void Terrain::initSystem(int w, int h, void *hdc, bool flip) {
   resize(w, h);
   s->screenW = w;
   s->screenH = h;
-  if (w == 800 && h == 600) g_pitch = 38.68219f;          // 0x421aba8f
+  // ?wide keeps the height at 600 and the 800x600 camera
+  if (w >= 800 && w <= 1280 && h == 600) g_pitch = 38.68219f;   // 0x421aba8f
   else if (w == 1024 && h == 768) g_pitch = 40.54160f;    // 0x42222a9a
   else if (w == 1280 && h == 1024) g_pitch = 40.83222f;   // 0x42235431
 }
@@ -1201,6 +1204,7 @@ void Terrain::resize(int w, int h) {
   g_gl.matrixMode(tgl::Context::PROJECTION);
   g_gl.loadIdentity();
   if (w == 800 && h == 600) { w = 1767; h = 1325; }
+  else if (h == 600 && w > 800 && w <= 1280) { w = 1767 * w / 800; h = 1325; }   // ?wide
   else if (w == 1024 && h == 768) { w = 1810; h = 1303; }
   else if (w == 1280 && h == 1024) { w = 1740; h = 1392; }
   // Integer halves, so the window is one unit off-centre (-884..883).

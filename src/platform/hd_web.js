@@ -1,7 +1,7 @@
 // WebGL2 presentation for src/port/hd.c, linked with --js-library. See hd.c
 // for what the layers are and how they're combined.
 //
-// The game's 800x600 frame is uploaded as-is (R16UI, RGB555) and decoded in
+// The game's 800x600 (or ?wide) frame is uploaded as-is (R16UI, RGB555) and decoded in
 // the shaders. Its text comes separately (gdi.c, gdi_hd_text): the frame
 // arrives with the text erased, and the runs are drawn here with Canvas2D in
 // the game's own fonts at the output resolution, then laid over the result. The terrain triangles from terrain_hd.cpp are replayed into a
@@ -399,8 +399,9 @@ addToLibrary({
     const gl = HD.gl;
     HD.builds++;
     // The framebuffer matches the output's pixel density over the 1:1 target.
-    const fw = Math.max(1, Math.round(HD.canvas.width * tw / 800));
-    const fh = Math.max(1, Math.round(HD.canvas.height * th / 600));
+    const sdl = Module['canvas'];
+    const fw = Math.max(1, Math.round(HD.canvas.width * tw / sdl.width));
+    const fh = Math.max(1, Math.round(HD.canvas.height * th / sdl.height));
     if (HD.fboSize[0] !== fw || HD.fboSize[1] !== fh) {
       gl.bindTexture(gl.TEXTURE_2D, HD.terrainTex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, fw, fh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);

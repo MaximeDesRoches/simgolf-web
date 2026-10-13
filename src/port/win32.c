@@ -33,6 +33,30 @@ static nu g_last_error;
 
 EM_JS(int, js_api_trace_enabled, (void), { return Module.apiTrace ? 1 : 0; });
 
+// Frame width for ?wide (docs/widescreen.md): ?wide or ?wide=16:9 -> 1066,
+// ?wide=16:10 -> 960, ?wide=auto follows the window's shape, ?wide=<width>.
+// Even widths only, 800..1280, fixed for the session.
+EM_JS(int, js_screen_w, (void), {
+  var m = /[?&]wide(?:=([^&]*))?/.exec(location.search);
+  var v = m ? decodeURIComponent(m[1] || '16:9') : (Module.wide || '');
+  if (!v || v === '0' || v === 'off') return 800;
+  var w;
+  if (v === 'auto') w = 600 * innerWidth / Math.max(1, innerHeight);
+  else if (/^[0-9]+:[0-9]+$/.test(v)) { var a = v.split(':'); w = 600 * a[0] / a[1]; }
+  else w = +v;
+  if (!(w > 0)) return 800;
+  return Math.max(800, Math.min(1280, Math.floor(w / 2) * 2));
+});
+
+int port_screen_w(void) {
+  static int w;
+  if (!w) {
+    w = js_screen_w();
+    if (w != 800) fprintf(stderr, "widescreen: %dx600\n", w);
+  }
+  return w;
+}
+
 void api_trace(const char *name) {
   static int enabled = -1, count;
   if (enabled < 0) enabled = js_api_trace_enabled();
@@ -289,7 +313,7 @@ static void pump_sdl(void) {
   while (SDL_PollEvent(&e)) {
     switch (e.type) {
       case SDL_MOUSEMOTION:
-        g_mouse_x = e.motion.x;
+        g_mouse_x = e.motion.x - gdi_wide_dx();
         g_mouse_y = e.motion.y;
         win_post(0x200, mouse_keys(), xy(g_mouse_x, g_mouse_y));
         break;
@@ -312,7 +336,7 @@ static void pump_sdl(void) {
       case SDL_MOUSEBUTTONDOWN:
       case SDL_MOUSEBUTTONUP: {
         int down = e.type == SDL_MOUSEBUTTONDOWN;
-        g_mouse_x = e.button.x;
+        g_mouse_x = e.button.x - gdi_wide_dx();
         g_mouse_y = e.button.y;
         int left = e.button.button == SDL_BUTTON_LEFT;
         if (!left && e.button.button != SDL_BUTTON_RIGHT) break;

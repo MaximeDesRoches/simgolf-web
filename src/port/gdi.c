@@ -35,6 +35,11 @@ typedef struct {
   int is565;
 } Dib;
 
+static void text_forget(Dib *d);
+static void wide_register(Dib *d, nu ppbits);
+static void wide_unregister(Dib *d);
+static void wide_terrain(Dib *d, uint16_t **pixels, int *width);
+
 typedef struct {
   int file;            // index into g_fonts
   float scale;
@@ -128,6 +133,7 @@ static const TerrainSurface *terrain_surface(void *hdc) {
   s.pixels = d->bottom_up ? (uint16_t *)(d->bits + (size_t)(d->h - 1) * d->stride) : (uint16_t *)d->bits;
   s.pitch = d->bottom_up ? -pitch : pitch;
   s.width = d->w;
+  wide_terrain(d, &s.pixels, &s.width);
   s.height = d->h;
   return &s;
 }
@@ -138,6 +144,8 @@ void gdi_init(void) {
   g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_ACCELERATED);
   g_texture = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING,
                                 WIN_SCREEN_W, WIN_SCREEN_H);
+  // The page sizes the canvas from --ar (4:3 unless ?wide).
+  EM_ASM({ Module['canvas'].style.setProperty('--ar', $0 / $1); }, WIN_SCREEN_W, WIN_SCREEN_H);
   g_screen_dib.w = WIN_SCREEN_W;
   g_screen_dib.h = WIN_SCREEN_H;
   g_screen_dib.bpp = 16;
@@ -157,6 +165,123 @@ void gdi_init(void) {
 
 static Dc *dc_get(nu h) { return obj_get(h, OBJ_DC); }
 static Dib *dc_dib(Dc *dc) { return dc ? obj_get(dc->bitmap, OBJ_BITMAP) : NULL; }
+
+// ------------------------------------------------------------------ widescreen
+// With ?wide the screen is W x 600 (W > 800) but only the course view knows
+// how to fill it: menus, reports and their buttons are laid out for 800x600.
+// Those screens start by stretching an 800x600 background over a full-screen
+// surface. That switches every full-screen surface (jgl's GsSurface and its
+// DIB) to a centred 800-wide view, so everything drawn afterwards, and the
+// mouse, is in 800x600 coordinates ("narrow"). The terrain renderer drawing,
+// or the course view copying its terrain cache, switches back.
+
+typedef struct { Dib *d; uint8_t *gs, *bits; } WideSurf;
+static WideSurf g_wide[32];
+static int g_nwide;
+static int g_narrow;
+
+int gdi_wide_dx(void) { return g_narrow ? (WIN_SCREEN_W - 800) / 2 : 0; }
+
+static WideSurf *wide_find(Dib *d) {
+  for (int i = 0; i < g_nwide; i++)
+    if (g_wide[i].d == d) return &g_wide[i];
+  return NULL;
+}
+
+// A W x 600 16-bit DIB created by jgl's GsSurface::Create, which passes
+// &surface->bits (+0x4c0) as ppvBits.
+static void wide_register(Dib *d, nu ppbits) {
+  if (WIN_SCREEN_W == 800 || d->w != WIN_SCREEN_W || d->h != WIN_SCREEN_H || d->bpp != 16 || !ppbits) return;
+  uint8_t *gs = (uint8_t *)P(ppbits) - 0x4c0;
+  if (*(uint32_t *)gs != 0x1011d0b0u) return;   // GsSurface vtable
+  if (g_nwide == (int)(sizeof g_wide / sizeof *g_wide)) {
+    fprintf(stderr, "widescreen: too many full-screen surfaces\n");
+    return;
+  }
+  g_wide[g_nwide++] = (WideSurf){d, gs, d->bits};
+}
+
+static void wide_view(WideSurf *s, int narrow) {
+  int dx = (WIN_SCREEN_W - 800) / 2, w = narrow ? 800 : WIN_SCREEN_W;
+  uint8_t *gs = s->gs, *bits = s->bits + (narrow ? dx * 2 : 0);
+  if (*(uint8_t **)(gs + 0x4c0) != s->d->bits) return;   // not set up by Create yet
+  text_forget(s->d);
+  s->d->bits = bits;
+  s->d->w = w;
+  *(uint8_t **)(gs + 0x4c0) = bits;
+  if (*(int32_t *)(gs + 0x4c8) > 0) *(uint8_t **)(gs + 0x4cc) = bits;
+  *(int32_t *)(gs + 0x38) = w;
+  *(int32_t *)(gs + 0x84 + 4) = w;   // BITMAPINFOHEADER biWidth
+  int32_t *clip = (int32_t *)(gs + 0x44), *bounds = (int32_t *)(gs + 0x54);
+  int full = clip[0] == 0 && clip[1] == 0 && clip[2] == bounds[2] && clip[3] == bounds[3];
+  bounds[2] = w;
+  if (full || clip[2] > w) clip[2] = w;
+  // and the GDI clip of its memory DC (+0x4bc), which SetClipRect keeps in step
+  Dc *dc = dc_get(*(nu *)(gs + 0x4bc));
+  if (dc && dc->has_clip) {
+    if ((full && narrow) || dc->clip[2] > w) dc->clip[2] = w;
+    else if (!narrow && dc->clip[2] == 800) dc->clip[2] = w;
+  }
+}
+
+static void wide_unregister(Dib *d) {
+  WideSurf *s = wide_find(d);
+  if (!s) return;
+  if (g_narrow) wide_view(s, 0);
+  *s = g_wide[--g_nwide];
+}
+
+static void set_narrow(int on) {
+  if (on == g_narrow) return;
+  for (int i = 0; i < g_nwide; i++) wide_view(&g_wide[i], on);
+  g_narrow = on;
+  // golf's windows (the list at 0x839ac0) keep their visible rect (+0x1dc),
+  // clipped to the screen when it was computed; window paints copy only that.
+  int from = on ? WIN_SCREEN_W : 800, to = on ? 800 : WIN_SCREEN_W;
+  for (int i = 0; i < *(int *)0x83ab90 && i < 64; i++) {
+    int32_t *vis = (int32_t *)(uintptr_t)(((uint32_t *)0x839ac0)[i] + 0x1dc);
+    if (vis[2] == from) vis[2] = to;
+  }
+  if (on) {
+    // The 4:3 screens never touch the side bars of the window: clear them once.
+    int dx = (WIN_SCREEN_W - 800) / 2;
+    for (int y = 0; y < g_screen_dib.h; y++) {
+      uint16_t *row = (uint16_t *)(g_screen_dib.bits + (size_t)y * g_screen_dib.stride);
+      memset(row, 0, dx * 2);
+      memset(row + dx + 800, 0, (g_screen_dib.w - dx - 800) * 2);
+    }
+  }
+}
+
+// The terrain renderer keeps the surface it gets at Terrain::initSystem, so it
+// always gets the full width.
+static void wide_terrain(Dib *d, uint16_t **pixels, int *width) {
+  WideSurf *ws = wide_find(d);
+  if (!ws) return;
+  *pixels = (uint16_t *)ws->bits;
+  *width = WIN_SCREEN_W;
+}
+
+// golf's terrain cache (*(0x4c1574), see hd.c): the course view copies the
+// rendered terrain into it, or it back onto the frame, at the start of a frame.
+static int is_terrain_cache(Dib *d) {
+  WideSurf *ws = wide_find(d);
+  uint32_t w = *(uint32_t *)0x4c1574;
+  return ws && w && ws->gs == *(uint8_t **)(uintptr_t)(w + 4);
+}
+
+// Called before every StretchBlt/BitBlt; may change the rects to the narrow view.
+static void wide_blit(Dc *ddc, Dib *dst, nu *x, nu *w, nu h, Dib *src, nu sw, nu sh) {
+  if (WIN_SCREEN_W == 800) return;
+  int wdst = wide_find(dst) != NULL;
+  if (wdst && *x == 0 && (int32_t)*w == WIN_SCREEN_W && (int32_t)h == WIN_SCREEN_H &&
+      src->w == 800 && sw == 800 && sh == 600) {
+    set_narrow(1);
+    *w = 800;   // centred, unscaled
+  }
+  if (wdst && wide_find(src) && (is_terrain_cache(src) || is_terrain_cache(dst))) set_narrow(0);
+  if (g_narrow && ddc->is_window && wide_find(src)) *x += (WIN_SCREEN_W - 800) / 2;
+}
 
 nu CreateCompatibleDC(nu hdc) {
   API_TRACE();
@@ -207,12 +332,11 @@ nu SelectObject(nu hdc, nu h) {
   return old ? old : GetStockObject(0);
 }
 
-static void text_forget(Dib *d);
-
 nu DeleteObject(nu h) {
   API_TRACE();
   Dib *d = obj_get(h, OBJ_BITMAP);
   if (d && d != &g_screen_dib) {
+    wide_unregister(d);
     text_forget(d);
     if (d->owns_bits) free(d->bits);
     free(d);
@@ -246,6 +370,7 @@ nu CreateDIBSection(nu hdc, nu bmi, nu usage, nu ppbits, nu section, nu offset) 
   }
   d->bits = calloc((size_t)d->stride * d->h + 4, 1);
   d->owns_bits = 1;
+  wide_register(d, ppbits);
   nu hdrsize = U32(bmi, 0);
   nu compression = U32(bmi, 16);
   if (compression == 3) {   // BI_BITFIELDS: masks follow the header
@@ -466,6 +591,7 @@ nu StretchBlt(nu hdst, nu x, nu y, nu w, nu h, nu hsrc, nu sx, nu sy, nu sw, nu 
   Dc *ddc = dc_get(hdst), *sdc = dc_get(hsrc);
   Dib *dst = dc_dib(ddc), *src = dc_dib(sdc);
   if (!dst || !src) return 0;
+  wide_blit(ddc, dst, &x, &w, h, src, sw, sh);
   blit_pixels(dst, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, src, (int32_t)sx, (int32_t)sy,
               (int32_t)sw, (int32_t)sh, ddc->has_clip ? ddc->clip : NULL);
   if (ddc->is_window) win_present();

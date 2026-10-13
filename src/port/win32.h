@@ -17,8 +17,11 @@ typedef uint32_t nu;
 #define WIN_HWND 0x00010010u          // the one window
 #define WIN_HINSTANCE 0x00400000u
 #define WIN_JGLD_BASE 0x10000000u
-#define WIN_SCREEN_W 800
+// The game's frame is 800x600, or wider with ?wide (widescreen.md): the
+// height stays 600 and golf's screen width global follows WIN_SCREEN_W.
+#define WIN_SCREEN_W port_screen_w()
 #define WIN_SCREEN_H 600
+int port_screen_w(void);
 
 void win32_init(void);
 
@@ -49,6 +52,8 @@ uint32_t win_ticks(void);
 // GDI (gdi.c)
 void gdi_init(void);
 nu gdi_window_dc(void);
+// Left edge of the centred 4:3 view while a menu screen is up with ?wide, else 0.
+int gdi_wide_dx(void);
 
 #ifdef __cplusplus
 }
