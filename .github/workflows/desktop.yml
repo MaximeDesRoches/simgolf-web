@@ -110,4 +110,4 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft \
             --title "SimGolf desktop ${GITHUB_REF_NAME#desktop-v}" \
-            --notes "Unsigned desktop builds. Bring your own SimGolf disc image and v1.02 no-CD golf.exe; see Read me first.txt in each download."
+            --notes "Unsigned desktop builds. Bring your own SimGolf disc image and v1.02 no-CD golf.exe; see Read me first.txt in each download. The macOS build is tested (Apple Silicon and Intel). **The Windows build is untested: it compiles but nobody has run it on Windows yet.** Please report what happens in Issues."

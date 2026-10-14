@@ -72,6 +72,9 @@ and `quit`, in game coordinates and ms since start. For example:
 
 ## Not done yet
 
+- The Windows build compiles (CI and `tools/native/build-windows.sh`) but
+  has never been run on Windows.
+
 - Intro and closing videos (Bink; the browser build converts them with
   FFmpeg's decoder at install time).
 - The HD presentation (hd.c + hd_web.js: native-resolution terrain, xBR,

@@ -1,7 +1,13 @@
 SimGolf for desktop
 ===================
 
-This app runs Sid Meier's SimGolf (2002) natively. It contains no game
+This app runs Sid Meier's SimGolf (2002) natively.
+
+  WINDOWS VERSION: UNTESTED. The Windows build compiles, but nobody has run
+  it on Windows yet. It may not start or may crash. If you try it, please
+  report what happens: https://github.com/RichardAtCT/simgolf-web/issues
+  The macOS version has been tested on Apple Silicon and Intel (Rosetta).
+ It contains no game
 files: on first launch it asks for your own copy, the same two things the
 browser version needs:
 
@@ -26,7 +32,8 @@ The app isn't signed by Apple or Microsoft, so the system warns about it.
   later, if that only offers "Move to Bin", open System Settings > Privacy &
   Security and click "Open Anyway" next to SimGolf, then open it again.
 
-  Windows: unzip the folder anywhere and run SimGolf.exe. If SmartScreen
+  Windows (untested, see above): unzip the folder anywhere and run
+  SimGolf.exe. If SmartScreen
   says "Windows protected your PC", click "More info", then "Run anyway".
 
 Keys
