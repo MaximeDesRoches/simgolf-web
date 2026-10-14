@@ -102,6 +102,8 @@
     border-right: 3px solid var(--violet-deep); border-bottom: 3px solid var(--violet-deep); transform: rotate(45deg); background: #f3f1fb; }
   .quote p { margin: 0 0 6px; font-weight: 700; font-style: italic; }
   .quote cite { font-style: normal; font-size: 13px; font-weight: 800; color: var(--violet); }
+  .desktop { max-width: 560px; margin: 22px auto 0; text-align: center; font-weight: 800; color: var(--violet-deep); }
+  .desktop span { display: block; font-weight: 700; font-size: 13px; color: var(--ink); opacity: .8; }
   .coffee { display: flex; align-items: center; justify-content: center; gap: 10px; width: max-content; max-width: 100%; margin: 26px auto 0; padding: 10px 22px 10px 12px; border-radius: 40px;
     text-decoration: none; color: #fff; font: 800 18px/1.1 "Baloo 2", sans-serif; background: linear-gradient(#a0521f, var(--wood) 60%, var(--wood-dark));
     border: 3px solid #3a1806; box-shadow: 0 0 0 2px rgba(255,255,255,.35) inset, 0 5px 0 rgba(58,24,6,.35); transition: transform .12s; }
@@ -152,7 +154,7 @@
     <p class="tag">The 2002 classic, running in your browser. You bring the game files; nothing is uploaded anywhere.</p>
     <div class="count" id="count">⛳ <b id="count-n"></b> <span id="count-w">rounds</span> teed off<span id="count-hw" style="display:none"> · <b id="count-h"></b> played</span> in the browser so far</div>
     <div id="mobile" style="display:none" class="warn">SimGolf needs a mouse and a big screen, so it doesn't work on phones or tablets. Open this page on a desktop or laptop.</div>
-    <div id="unsupported">This browser can't run the game yet. Use a recent <strong>Chrome</strong> or <strong>Edge</strong> (version 137 or newer) on a desktop or laptop.</div>
+    <div id="unsupported">This browser can't run the game yet. Use a recent <strong>Chrome</strong> or <strong>Edge</strong> (version 137 or newer) on a desktop or laptop, or <a href="https://github.com/RichardAtCT/simgolf-web/releases/latest" target="_blank" rel="noopener">download the desktop app</a> for Mac or Windows (beta).</div>
     <div id="ready" hidden>
       <button type="button" id="play" class="playbtn">
         <span class="tee" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 30 30"><path d="M9 5l17 10-17 10z" fill="#241078" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/></svg></span>
@@ -174,6 +176,7 @@
     <div id="bar"><div></div></div>
     <div id="msg" role="status"></div>
     </div>
+    <p class="desktop">💻 Prefer an app? <a href="https://github.com/RichardAtCT/simgolf-web/releases/latest" target="_blank" rel="noopener">Download SimGolf for Mac or Windows</a> <span>(beta, needs the same two files; the Windows version is untested)</span></p>
     <blockquote class="quote">
       <p>If humankind's AIpocalypse comes to pass and we're eradicated by the products [of] our own ingenuity, it will have been worth it because of this and this, alone.</p>
       <cite>u/Sisyphicarus, on Reddit</cite>
