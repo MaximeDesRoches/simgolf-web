@@ -269,10 +269,22 @@
           '<button data-a="dl" data-id="' + s.id + '">Download</button></div>';
       });
       h += '<p id="sv-msg">' + esc(msg) + '</p>';
+      h += '<h3>Settings</h3><label class="row"><input type="checkbox" id="sv-edge"' +
+        (edgeScrollOn() ? ' checked' : '') + '> Scroll the course when the pointer touches a screen edge</label>';
       if (Module.savePanelFooter) h += Module.savePanelFooter;   // extra controls from the page
       panel.innerHTML = h;
     }).catch(function (e) { panel.textContent = 'Save history unavailable: ' + e; });
   }
+  function edgeScrollOn() {
+    if (Module.edgeScroll !== undefined) return Module.edgeScroll;
+    try { return localStorage.getItem('simgolf-edge-scroll') !== '0'; } catch (e) { return true; }
+  }
+  // Edge scrolling (read by the game in src/port/win32.c, js_edge_state).
+  panel.addEventListener('change', function (e) {
+    if (e.target.id !== 'sv-edge') return;
+    Module.edgeScroll = e.target.checked;
+    try { localStorage.setItem('simgolf-edge-scroll', e.target.checked ? '1' : '0'); } catch (err) {}
+  });
   panel.addEventListener('click', function (e) {
     var a = e.target.getAttribute && e.target.getAttribute('data-a');
     if (!a) return;
