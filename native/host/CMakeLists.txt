@@ -85,7 +85,7 @@ if(WIN32)
   target_compile_definitions(lzma7z PUBLIC UNICODE _UNICODE)
 endif()
 
-set(HOST_SRC main.cpp run.c wasi.cpp imports.cpp audio.cpp importer.cpp setup.cpp)
+set(HOST_SRC main.cpp run.c wasi.cpp present_gl.cpp imports.cpp audio.cpp importer.cpp setup.cpp)
 set(RESOURCES "${ROOT}/third_party/fonts/LiberationSans-Regular.ttf" "${ROOT}/third_party/fonts/LiberationSans-Bold.ttf"
   "${ROOT}/third_party/fonts/LiberationSerif-Bold.ttf" "${ROOT}/third_party/fonts/ComicNeue-Bold.ttf"
   "${ROOT}/third_party/fonts/LICENSE" "${ROOT}/third_party/fonts/README.md")
@@ -125,4 +125,5 @@ target_include_directories(SimGolf PRIVATE "${ROOT}/third_party/stb")
 if(TARGET SDL2::SDL2main)
   target_link_libraries(SimGolf PRIVATE SDL2::SDL2main)
 endif()
-target_link_libraries(SimGolf PRIVATE w2c_golf unshield lzma7z ${SDL2_TARGET} ZLIB::ZLIB)
+find_package(OpenGL REQUIRED)
+target_link_libraries(SimGolf PRIVATE w2c_golf unshield lzma7z ${SDL2_TARGET} ZLIB::ZLIB OpenGL::GL)

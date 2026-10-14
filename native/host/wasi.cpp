@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <map>
+#include <thread>
 #include <vector>
 
 #include "host.h"
@@ -382,4 +383,60 @@ WASI(u32, clock_time_get, u32 id, u64 precision, u32 out) {
 
 extern "C" void w2c_wasi__snapshot__preview1_proc_exit(struct w2c_wasi__snapshot__preview1 *, u32 code) {
   guest_exit((int)code);
+}
+
+// No environment variables reach the game.
+WASI(u32, environ_sizes_get, u32 count, u32 size) {
+  mem_put_u32(count, 0);
+  mem_put_u32(size, 0);
+  return E_SUCCESS;
+}
+WASI(u32, environ_get, u32 vars, u32 buf) {
+  (void)vars; (void)buf;
+  return E_SUCCESS;
+}
+
+WASI(u32, path_rename, u32 fd, u32 path, u32 len, u32 fd2, u32 path2, u32 len2) {
+  fs::path a, b;
+  if (!resolve(fd, path, len, &a) || !resolve(fd2, path2, len2, &b)) return E_NOENT;
+  std::error_code ec;
+  fs::rename(a, b, ec);
+  return ec ? err_of(ec) : E_SUCCESS;
+}
+
+WASI(u32, path_remove_directory, u32 fd, u32 path, u32 len) {
+  fs::path p;
+  if (!resolve(fd, path, len, &p)) return E_NOENT;
+  if (filetype(p) != FT_DIR) return E_NOTDIR;
+  std::error_code ec;
+  fs::remove(p, ec);
+  return ec ? err_of(ec) : E_SUCCESS;
+}
+
+// Only clock subscriptions (what sleep() uses): waits for the earliest.
+WASI(u32, poll_oneoff, u32 in, u32 out, u32 n, u32 nevents) {
+  if (!n || !mem_ok(in, (uint64_t)n * 48) || !mem_ok(out, (uint64_t)n * 32)) return E_INVAL;
+  uint64_t wait = UINT64_MAX;
+  uint32_t which = 0;
+  for (uint32_t i = 0; i < n; i++) {
+    uint32_t s = in + i * 48;
+    if (mem(s)[8] != 0) continue;
+    uint64_t t;
+    memcpy(&t, mem(s + 24), 8);
+    uint16_t flags;
+    memcpy(&flags, mem(s + 40), 2);
+    if (flags & 1) {   // absolute: against the monotonic clock
+      uint64_t now = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now().time_since_epoch()).count();
+      t = t > now ? t - now : 0;
+    }
+    if (t < wait) wait = t, which = i;
+  }
+  if (wait == UINT64_MAX) return E_NOSYS;
+  std::this_thread::sleep_for(std::chrono::nanoseconds(wait));
+  memset(mem(out), 0, 32);
+  memcpy(mem(out), mem(in + which * 48), 8);
+  mem(out)[10] = 0;
+  mem_put_u32(nevents, 1);
+  return E_SUCCESS;
 }

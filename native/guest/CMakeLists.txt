@@ -18,6 +18,12 @@ set(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 set(SIMGOLF_GEN "${ROOT}/build/gen" CACHE PATH "Translator output")
 set(SDL2_INCLUDE "$ENV{HOME}/projects/emsdk/upstream/emscripten/cache/sysroot/include/SDL2" CACHE PATH "SDL2 headers (types only)")
 
+# FFmpeg's Bink decoder for the videos (tools/native/build-ffmpeg-wasi.sh)
+set(FFMPEG "${ROOT}/build/ffmpeg-wasi/out" CACHE PATH "FFmpeg built for wasi")
+if(NOT EXISTS "${FFMPEG}/lib/libavcodec.a")
+  message(FATAL_ERROR "No FFmpeg in ${FFMPEG}: run tools/native/build-ffmpeg-wasi.sh first")
+endif()
+
 if(NOT EXISTS "${SIMGOLF_GEN}/golf/golf_protos.h")
   message(FATAL_ERROR "No translated game in ${SIMGOLF_GEN}: run tools/port/rebuild.sh first")
 endif()
@@ -28,7 +34,7 @@ file(GLOB JGLD_OVERRIDES CONFIGURE_DEPENDS "${ROOT}/src/port/jgld/*.c")
 
 add_executable(golf-host
   ${ROOT}/src/port/port_main.c ${ROOT}/src/port/runtime.c ${ROOT}/src/port/crt.c ${ROOT}/src/port/fs.c
-  ${ROOT}/src/port/win32.c ${ROOT}/src/port/gdi.c ${ROOT}/src/port/imports.c ${ROOT}/src/port/video.c
+  ${ROOT}/src/port/win32.c ${ROOT}/src/port/gdi.c ${ROOT}/src/port/imports.c video.c
   ${ROOT}/src/port/hd.c
   ${ROOT}/src/platform/terrain_dll.cpp ${ROOT}/src/platform/terrain_gl.cpp ${ROOT}/src/platform/terrain_bridge.cpp
   ${ROOT}/src/platform/terrain_hd.cpp ${ROOT}/src/platform/sound.cpp
@@ -36,7 +42,7 @@ add_executable(golf-host
 set_target_properties(golf-host PROPERTIES SUFFIX ".wasm")
 target_compile_definitions(golf-host PRIVATE SIMGOLF_PORT_FS SIMGOLF_HOST _WASI_EMULATED_SIGNAL _WASI_EMULATED_PROCESS_CLOCKS)
 target_include_directories(golf-host PRIVATE
-  "${CMAKE_CURRENT_SOURCE_DIR}/include" "${ROOT}/src" "${ROOT}/third_party/stb" "${SDL2_INCLUDE}")
+  "${CMAKE_CURRENT_SOURCE_DIR}/include" "${ROOT}/src" "${ROOT}/third_party/stb" "${SDL2_INCLUDE}" "${FFMPEG}/include")
 foreach(f IN LISTS GEN_SRC)
   get_filename_component(d "${f}" DIRECTORY)
   set_property(SOURCE "${f}" APPEND PROPERTY INCLUDE_DIRECTORIES "${d}")
@@ -51,3 +57,4 @@ target_link_options(golf-host PRIVATE
   -Wl,--allow-undefined -Wl,--no-stack-first -Wl,--global-base=285212672 -Wl,-z,stack-size=8388608
   -Wl,--initial-memory=402653184 -Wl,--max-memory=2147483648
   -lwasi-emulated-signal -lwasi-emulated-process-clocks)
+target_link_libraries(golf-host PRIVATE "${FFMPEG}/lib/libavformat.a" "${FFMPEG}/lib/libavcodec.a" "${FFMPEG}/lib/libavutil.a")

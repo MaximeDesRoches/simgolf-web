@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <fstream>
 #include <iterator>
+#include <deque>
 #include <map>
 #include <vector>
 
@@ -44,6 +45,13 @@ struct Voice {
 };
 
 std::map<int, Sound> g_sounds;
+
+// The video's soundtrack: stereo at its own rate, played as it's pushed.
+struct Stream {
+  std::deque<float> pcm;   // interleaved stereo
+  int rate = kRate;
+  double pos = 0;          // fractional frame within pcm
+} g_stream;
 std::vector<Voice> g_voices;
 SDL_AudioDeviceID g_dev;
 float g_master = 1;
@@ -123,6 +131,20 @@ void mix(void *, Uint8 *stream, int len) {
         if (v.fade <= 0) v.done = true;
       }
     }
+  }
+  if (!g_stream.pcm.empty()) {
+    double step = (double)g_stream.rate / kRate;
+    for (int i = 0; i < n; i++) {
+      size_t i0 = (size_t)g_stream.pos;
+      if ((i0 + 1) * 2 + 1 >= g_stream.pcm.size()) break;
+      float t = (float)(g_stream.pos - i0);
+      out[i * 2] += g_stream.pcm[i0 * 2] + (g_stream.pcm[i0 * 2 + 2] - g_stream.pcm[i0 * 2]) * t;
+      out[i * 2 + 1] += g_stream.pcm[i0 * 2 + 1] + (g_stream.pcm[i0 * 2 + 3] - g_stream.pcm[i0 * 2 + 1]) * t;
+      g_stream.pos += step;
+    }
+    size_t used = (size_t)g_stream.pos;
+    g_stream.pcm.erase(g_stream.pcm.begin(), g_stream.pcm.begin() + (long)std::min(used * 2, g_stream.pcm.size()));
+    g_stream.pos -= (double)used;
   }
   for (int i = 0; i < n * 2; i++) out[i] = std::max(-1.0f, std::min(1.0f, out[i] * g_master));
   for (size_t k = 0; k < g_voices.size();) {
@@ -223,4 +245,21 @@ void audio_shutdown() {
   g_dev = 0;
   g_voices.clear();
   g_sounds.clear();
+}
+
+void audio_stream_push(const float *samples, int frames, int channels, int rate) {
+  if (!g_dev) audio_init();
+  Lock lock;
+  g_stream.rate = rate;
+  for (int i = 0; i < frames; i++) {
+    float l = samples[i * channels], r = channels > 1 ? samples[i * channels + 1] : l;
+    g_stream.pcm.push_back(l);
+    g_stream.pcm.push_back(r);
+  }
+}
+
+void audio_stream_end() {
+  Lock lock;
+  g_stream.pcm.clear();
+  g_stream.pos = 0;
 }

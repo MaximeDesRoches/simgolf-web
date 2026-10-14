@@ -39,19 +39,23 @@ The app isn't signed by Apple or Microsoft, so the system warns about it.
 Keys
 ----
   Alt+Enter or F11 (Ctrl+Cmd+F on a Mac)   full screen on/off
-  Ctrl+F10                                 smooth or sharp scaling
+  Ctrl+F9    high-resolution course terrain on/off
+  Ctrl+F10   scaling: xBR (default), nearest, smooth
+  Ctrl+F11   all high-resolution drawing on/off
+  A key press or click skips the intro video.
   Everything else is the game's own keys.
+
+The game draws at 800x600; the app redraws its text and the course terrain
+at your screen's resolution (it needs OpenGL 3.3; without it the picture is
+simply scaled up).
 
 Mods
 ----
 Unzip a mod into the mods folder in the app data folder above, one folder
 per mod. Theme packs then show up under Select A Theme on the main menu.
 
-Settings (screen width for widescreen, edge scrolling, scaling) are in
-settings.ini in the app data folder.
-
-Not yet in this version: the intro and closing videos, and the browser
-version's sharper high-resolution rendering.
+Settings (screen width for widescreen, edge scrolling, scaling,
+high-resolution drawing) are in settings.ini in the app data folder.
 
 SimGolf is (c) Firaxis Games / Electronic Arts. This port is an unofficial
 fan project: https://github.com/RichardAtCT/simgolf-web

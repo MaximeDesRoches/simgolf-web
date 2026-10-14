@@ -72,8 +72,11 @@ extern int g_exit_code;
 struct HostOptions {
   int screen_w = 800;        // 800, or wider for the opt-in widescreen mode
   bool edge_scroll = true;
-  bool linear = true;        // scale filter
   bool fullscreen = false;
+  int filter = 2;            // 0 nearest, 1 linear, 2 xBR (hd_web.js's 2D filters)
+  bool hd = true;            // the OpenGL high-resolution layers (Ctrl+F11)
+  bool hd_terrain = true;    // course terrain at full resolution (Ctrl+F9)
+  bool hd_text = true;       // text redrawn in its fonts at full resolution
 };
 extern HostOptions g_opts;
 void load_options();
@@ -89,6 +92,9 @@ void audio_fade_out(int index, int ms);
 void audio_stop(int index);
 void audio_shutdown();
 void audio_set_master(float gain);
+// The videos' soundtrack (native/guest/video.c)
+void audio_stream_push(const float *samples, int frames, int channels, int rate);
+void audio_stream_end();
 
 // ------------------------------------------------------------------ first run (setup.cpp, importer.cpp)
 

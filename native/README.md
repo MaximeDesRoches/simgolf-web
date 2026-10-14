@@ -12,12 +12,19 @@ what the page's JavaScript does in the browser.
 native/guest   the game as golf-host.wasm (wasi-sdk). Same sources as the
                browser's golf target; include/emscripten.h turns every
                EM_JS function into an import from the "host" module, and SDL
-               calls become imports too.
+               calls become imports too. video.c replaces src/port/video.c:
+               it decodes the disc's .bik with FFmpeg's Bink decoder
+               (tools/native/build-ffmpeg-wasi.sh) and passes frames and
+               audio to the host.
 native/host    the app: wasm2c output of golf-host.wasm + the host.
   main.cpp       data folder, first run, runs the module
   wasi.cpp       the WASI calls wasi-libc makes (files under /game, /image,
                  /fonts, /assets), stdout/stderr, clock, exit
-  imports.cpp    window and scaling, input, timing, page hooks, test script
+  imports.cpp    window, input, timing, page hooks, video frames, test script
+  present_gl.cpp hd_web.js in OpenGL 3.3: the frame through xBR/linear/
+                 nearest, terrain_hd.cpp's triangles at full resolution,
+                 TextOut text redrawn with stb_truetype; SDL_Renderer when
+                 there's no GL
   audio.cpp      sound_web.js's Web Audio rules on an SDL audio mixer
   importer.cpp   first-run install from the player's disc image + no-CD exe
                  (web/pages/install-worker.js natively: ISO 9660, zip, 7z
@@ -61,7 +68,10 @@ installs without the setup window, `--reinstall` shows it again.
 
 `SIMGOLF_SCRIPT=file` drives the game: lines of `<ms> click X Y`,
 `rclick`, `move`, `key NAME` (SDL key names), `text CHARS`, `shot FILE.bmp`
-and `quit`, in game coordinates and ms since start. For example:
+(the game's frame), `hdshot FILE.bmp` (the window's output) and `quit`, in
+game coordinates and ms since start. `SIMGOLF_WINDOW=WxH` sets the window
+size, `SIMGOLF_NO_VIDEOS=1` skips the videos, `SIMGOLF_NO_GL=1` forces
+SDL_Renderer. For example:
 
 ```
 5000 click 140 445     # Sandbox Mode
@@ -74,10 +84,6 @@ and `quit`, in game coordinates and ms since start. For example:
 
 - The Windows build compiles (CI and `tools/native/build-windows.sh`) but
   has never been run on Windows.
-
-- Intro and closing videos (Bink; the browser build converts them with
-  FFmpeg's decoder at install time).
-- The HD presentation (hd.c + hd_web.js: native-resolution terrain, xBR,
-  sharp text). Its imports are stubbed to "inactive", so frames go through
-  SDL's scaler. hd_web.js is WebGL2, so an OpenGL 3.3 port is direct.
+- The intro plays before the game loads; the browser plays it over the
+  loading.
 - The browser build's save history panel and cross-browser save sync.

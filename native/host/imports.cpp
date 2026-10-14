@@ -5,6 +5,7 @@
 #include <SDL.h>
 
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -12,6 +13,7 @@
 #include <vector>
 
 #include "host.h"
+#include "present.h"
 
 HostOptions g_opts;
 bool g_exiting;
@@ -49,8 +51,12 @@ void load_options() {
     while (!v.empty() && (v.back() == '\r' || v.back() == ' ')) v.pop_back();
     if (k == "screen_width") g_opts.screen_w = atoi(v.c_str());
     else if (k == "edge_scroll") g_opts.edge_scroll = v != "0";
-    else if (k == "smooth_scaling") g_opts.linear = v != "0";
+    else if (k == "filter") g_opts.filter = v == "nearest" ? 0 : v == "linear" ? 1 : 2;
+    else if (k == "smooth_scaling" && v == "0") g_opts.filter = 0;   // v0.1.0
     else if (k == "fullscreen") g_opts.fullscreen = v == "1";
+    else if (k == "hd") g_opts.hd = v != "0";
+    else if (k == "hd_terrain") g_opts.hd_terrain = v != "0";
+    else if (k == "hd_text") g_opts.hd_text = v != "0";
   }
   if (g_opts.screen_w < 800 || g_opts.screen_w > 1280) g_opts.screen_w = 800;
   g_opts.screen_w &= ~1;
@@ -58,10 +64,15 @@ void load_options() {
 
 void save_options() {
   std::ofstream out(options_path());
+  static const char *filters[] = {"nearest", "linear", "xbr"};
   out << "# SimGolf settings. screen_width: 800 for 4:3, up to 1280 for widescreen (1066 = 16:9).\n"
+      << "# filter: xbr, linear or nearest. hd: sharp text and course terrain at the window's resolution.\n"
       << "screen_width=" << g_opts.screen_w << "\n"
       << "edge_scroll=" << (g_opts.edge_scroll ? 1 : 0) << "\n"
-      << "smooth_scaling=" << (g_opts.linear ? 1 : 0) << "\n"
+      << "filter=" << filters[g_opts.filter] << "\n"
+      << "hd=" << (g_opts.hd ? 1 : 0) << "\n"
+      << "hd_terrain=" << (g_opts.hd_terrain ? 1 : 0) << "\n"
+      << "hd_text=" << (g_opts.hd_text ? 1 : 0) << "\n"
       << "fullscreen=" << (g_opts.fullscreen ? 1 : 0) << "\n";
 }
 
@@ -74,7 +85,7 @@ static void apply_fullscreen() {
 static void apply_filter() {
   if (!g_renderer) return;
   if (g_texture) SDL_DestroyTexture(g_texture);
-  SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, g_opts.linear ? "1" : "0");
+  SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, g_opts.filter ? "1" : "0");
   g_texture = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, g_w, g_h);
 }
 
@@ -97,8 +108,20 @@ extern "C" u32 w2c_env_SDL_CreateWindow(struct w2c_env *, u32 title, u32 x, u32 
   g_w = (int)w;
   g_h = (int)h;
   int s = initial_scale(g_w, g_h);
-  g_window = SDL_CreateWindow("SimGolf", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, g_w * s, g_h * s,
-                              SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+  int ww = g_w * s, wh = g_h * s;
+  if (const char *size = getenv("SIMGOLF_WINDOW")) sscanf(size, "%dx%d", &ww, &wh);   // tests
+  // OpenGL 3.3 core for present_gl.cpp; without it, SDL_Renderer.
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+  SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+  Uint32 wflags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+  bool want_gl = !getenv("SIMGOLF_NO_GL");
+  g_window = SDL_CreateWindow("SimGolf", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, ww, wh,
+                              wflags | (want_gl ? SDL_WINDOW_OPENGL : 0));
+  if (!g_window && want_gl)
+    g_window = SDL_CreateWindow("SimGolf", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, ww, wh, wflags);
   if (!g_window) {
     fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
     guest_exit(1);
@@ -110,6 +133,8 @@ extern "C" u32 w2c_env_SDL_CreateWindow(struct w2c_env *, u32 title, u32 x, u32 
 
 extern "C" u32 w2c_env_SDL_CreateRenderer(struct w2c_env *, u32 window, u32 index, u32 flags) {
   (void)window; (void)index; (void)flags;
+  if ((SDL_GetWindowFlags(g_window) & SDL_WINDOW_OPENGL) && gl_present_init(g_window, g_w, g_h)) return 1;
+  fprintf(stderr, "present: using SDL_Renderer (no high-resolution layers)\n");
   g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
   if (!g_renderer) g_renderer = SDL_CreateRenderer(g_window, -1, 0);
   SDL_RenderSetLogicalSize(g_renderer, g_w, g_h);
@@ -127,19 +152,28 @@ extern "C" u32 w2c_env_SDL_UpdateTexture(struct w2c_env *, u32 tex, u32 rect, u3
   if (!mem_ok(pixels, (uint64_t)pitch * g_h)) return (u32)-1;
   g_frame_ptr = pixels;
   g_frame_pitch = pitch;
+  if (gl_present_active()) return 0;
   return (u32)SDL_UpdateTexture(g_texture, nullptr, mem(pixels), (int)pitch);
 }
 
 extern "C" u32 w2c_env_SDL_RenderClear(struct w2c_env *, u32) {
+  if (gl_present_active()) return 0;
   SDL_SetRenderDrawColor(g_renderer, 0, 0, 0, 255);
   return (u32)SDL_RenderClear(g_renderer);
 }
 
 extern "C" u32 w2c_env_SDL_RenderCopy(struct w2c_env *, u32, u32, u32, u32) {
+  if (gl_present_active()) return 0;
   return (u32)SDL_RenderCopy(g_renderer, g_texture, nullptr, nullptr);
 }
 
-extern "C" void w2c_env_SDL_RenderPresent(struct w2c_env *, u32) { SDL_RenderPresent(g_renderer); }
+extern "C" void w2c_env_SDL_RenderPresent(struct w2c_env *, u32) {
+  if (gl_present_active()) {
+    if (g_frame_ptr) gl_present_rgba(mem(g_frame_ptr), (int)g_frame_pitch);
+    return;
+  }
+  SDL_RenderPresent(g_renderer);
+}
 
 // ------------------------------------------------------------------ test script
 // SIMGOLF_SCRIPT=<file> drives the game for smoke tests, one command per line
@@ -227,6 +261,9 @@ static void run_script() {
       g_injected.push_back(e);
     } else if (l.cmd == "shot") {
       save_frame(l.a);
+    } else if (l.cmd == "hdshot") {
+      // the frame as shown, at the window's resolution
+      if (gl_present_active()) gl_request_shot(l.a);
     } else if (l.cmd == "quit") {
       guest_exit(0);
     }
@@ -238,21 +275,26 @@ static void run_script() {
 static bool host_shortcut(const SDL_KeyboardEvent &k) {
   const SDL_Keycode sym = k.keysym.sym;
   const Uint16 mod = k.keysym.mod;
+  // The browser build's keys: Ctrl+F9 high-resolution terrain, Ctrl+F10 the
+  // 2D filter (xBR, nearest, linear), Ctrl+F11 all of the HD layers.
+  if ((sym == SDLK_F9 || sym == SDLK_F10 || sym == SDLK_F11) && (mod & KMOD_CTRL)) {
+    if (k.type == SDL_KEYDOWN && !k.repeat) {
+      if (sym == SDLK_F9) g_opts.hd_terrain = !g_opts.hd_terrain;
+      else if (sym == SDLK_F11) g_opts.hd = !g_opts.hd;
+      else {
+        g_opts.filter = (g_opts.filter + 1) % 3;
+        apply_filter();
+      }
+      save_options();
+    }
+    return true;
+  }
   bool fs = (sym == SDLK_RETURN && (mod & KMOD_ALT)) || sym == SDLK_F11 ||
             (sym == SDLK_f && (mod & KMOD_GUI) && (mod & KMOD_CTRL));
   if (fs) {
     if (k.type == SDL_KEYDOWN && !k.repeat) {
       g_opts.fullscreen = !g_opts.fullscreen;
       apply_fullscreen();
-      save_options();
-    }
-    return true;
-  }
-  // Ctrl+F10: smooth or sharp scaling (the browser build's 2D filter key)
-  if (sym == SDLK_F10 && (mod & KMOD_CTRL)) {
-    if (k.type == SDL_KEYDOWN && !k.repeat) {
-      g_opts.linear = !g_opts.linear;
-      apply_filter();
       save_options();
     }
     return true;
@@ -291,6 +333,18 @@ extern "C" u32 w2c_env_SDL_PollEvent(struct w2c_env *, u32 out) {
         break;
       default:
         continue;
+    }
+    // The window shows the frame scaled and centred: SDL_Renderer maps mouse
+    // positions to the frame itself, with OpenGL it's done here.
+    if (gl_present_active()) {
+      float vx, vy, vw, vh;
+      gl_viewport_points(&vx, &vy, &vw, &vh);
+      auto map = [&](Sint32 &x, Sint32 &y) {
+        x = (Sint32)std::floor((x - vx) * g_w / vw);
+        y = (Sint32)std::floor((y - vy) * g_h / vh);
+      };
+      if (e.type == SDL_MOUSEMOTION) map(e.motion.x, e.motion.y);
+      else if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) map(e.button.x, e.button.y);
     }
     // These event types hold no pointers, so the wasm32 and native layouts
     // match (SDL_Event is 56 bytes on both).
@@ -346,22 +400,43 @@ extern "C" u32 w2c_host_js_fetch_game_file(struct w2c_host *, u32, u32) { return
 extern "C" u32 w2c_host_js_persist_load(struct w2c_host *) { return 0; }
 extern "C" void w2c_host_js_persist_file(struct w2c_host *, u32, u32) {}
 
-// The intro and closing videos need a Bink decoder; skipped for now.
-extern "C" u32 w2c_host_port_no_videos(struct w2c_host *) { return 1; }
-extern "C" void w2c_host_port_play_video(struct w2c_host *, u32, u32) {}
+// The intro and closing videos (native/guest/video.c decodes them).
+extern "C" u32 w2c_host_port_no_videos(struct w2c_host *) { return getenv("SIMGOLF_NO_VIDEOS") ? 1 : 0; }
+
+extern "C" void w2c_host_host_video_frame(struct w2c_host *, u32 rgba, u32 w, u32 h) {
+  if (!mem_ok(rgba, (uint64_t)w * h * 4)) return;
+  if (gl_present_active()) {
+    gl_present_video(mem(rgba), (int)w, (int)h);
+    return;
+  }
+  static SDL_Texture *tex;
+  static int tw, th;
+  if (!tex || tw != (int)w || th != (int)h) {
+    if (tex) SDL_DestroyTexture(tex);
+    tex = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, (int)w, (int)h);
+    tw = (int)w;
+    th = (int)h;
+  }
+  SDL_UpdateTexture(tex, nullptr, mem(rgba), (int)w * 4);
+  SDL_SetRenderDrawColor(g_renderer, 0, 0, 0, 255);
+  SDL_RenderClear(g_renderer);
+  SDL_RenderCopy(g_renderer, tex, nullptr, nullptr);
+  SDL_RenderPresent(g_renderer);
+}
+
+extern "C" void w2c_host_host_video_audio(struct w2c_host *, u32 samples, u32 frames, u32 channels, u32 rate) {
+  if (channels < 1 || channels > 2 || !mem_ok(samples, (uint64_t)frames * channels * 4)) return;
+  static bool logged;
+  if (!logged) {
+    fprintf(stderr, "video: soundtrack %u Hz, %u channels\n", rate, channels);
+    logged = true;
+  }
+  audio_stream_push((const float *)mem(samples), (int)frames, (int)channels, (int)rate);
+}
+
+extern "C" void w2c_host_host_video_end(struct w2c_host *) { audio_stream_end(); }
 
 extern "C" void w2c_host_game_exited(struct w2c_host *) { guest_exit(0); }
-
-// The upscaled presentation (hd.c / hd_web.js) is browser-only for now:
-// reporting it inactive makes gdi.c present through SDL above.
-extern "C" u32 w2c_env_hd_js_active(struct w2c_env *) { return 0; }
-extern "C" u32 w2c_env_hd_js_terrain_on(struct w2c_env *) { return 0; }
-extern "C" u32 w2c_env_hd_js_text_on(struct w2c_env *) { return 0; }
-extern "C" u32 w2c_env_hd_js_font(struct w2c_env *, u32, u32, u32) { return 0; }
-extern "C" void w2c_env_hd_js_text(struct w2c_env *, u32, u32) {}
-extern "C" void w2c_env_hd_js_texture(struct w2c_env *, u32, u32, u32, u32) {}
-extern "C" void w2c_env_hd_js_terrain(struct w2c_env *, u32, u32, u32, u32, u32, u32) {}
-extern "C" void w2c_env_hd_js_frame(struct w2c_env *, u32, u32, u32, u32) {}
 
 // ------------------------------------------------------------------ sound
 

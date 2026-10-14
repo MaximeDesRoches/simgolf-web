@@ -51,7 +51,7 @@ static void progress_to_stderr(void *, float f, const std::string &text) {
 
 static int fail(const std::string &msg) {
   fprintf(stderr, "%s\n", msg.c_str());
-  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "SimGolf", msg.c_str(), nullptr);
+  if (!getenv("SIMGOLF_SCRIPT")) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "SimGolf", msg.c_str(), nullptr);
   return 1;
 }
 

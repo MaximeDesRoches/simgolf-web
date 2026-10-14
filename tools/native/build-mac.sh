@@ -13,6 +13,7 @@ WASI_SDK=${WASI_SDK:-$HOME/projects/wasi-sdk-34.0-arm64-macos}
 OUT=build/native-release
 
 if [ -z "$SIMGOLF_WASM" ]; then
+  tools/native/build-ffmpeg-wasi.sh
   [ -f build/guest/build.ninja ] || cmake -G Ninja -B build/guest -S native/guest \
     -DCMAKE_TOOLCHAIN_FILE="$WASI_SDK/share/cmake/wasi-sdk-p1.cmake" -DWASI_SDK_PREFIX="$WASI_SDK" \
     -DCMAKE_BUILD_TYPE=Release >/dev/null
