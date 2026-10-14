@@ -12,7 +12,8 @@
 // copies are kept, plus one per half hour before that, up to 20 more. A small
 // panel (the "Saves" button, or Ctrl+F8) lists them: Restore copies one back
 // into Saved Games under a new name, to be loaded from the game's Load menu;
-// Download and Import move .sve files in and out of the browser.
+// Download and Import move .sve files in and out of the browser. The panel
+// also lists mods when web/mods.js is loaded.
 (function () {
   'use strict';
   var KEEP_RECENT = 20, KEEP_OLDER = 20, OLDER_SPACING = 30 * 60 * 1000;
@@ -148,6 +149,8 @@
     '#sv-panel .row{display:flex;align-items:center;gap:6px;padding:4px 0;border-top:1px solid #2c2c2c}' +
     '#sv-panel .row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
     '#sv-panel .row small{color:#888}' +
+    '#sv-panel .row.off span{color:#888}' +
+    '#sv-panel .mods-note{color:#fc8}' +
     '#sv-panel button{font:12px system-ui,sans-serif;background:#2c2c2c;color:#ddd;border:1px solid #555;' +
     'border-radius:3px;padding:2px 7px;cursor:pointer}' +
     '#sv-panel button:hover{background:#3a3a3a}' +
@@ -173,6 +176,12 @@
   document.body.appendChild(btn);
   document.body.appendChild(panel);
   document.body.appendChild(file);
+  var modFile = document.createElement('input');
+  modFile.type = 'file';
+  modFile.accept = '.zip';
+  modFile.multiple = true;
+  modFile.style.display = 'none';
+  document.body.appendChild(modFile);
   // Keep clicks and keys in the panel away from the game.
   ['mousedown', 'mouseup', 'click', 'keydown', 'keyup', 'wheel'].forEach(function (t) {
     panel.addEventListener(t, function (e) { e.stopPropagation(); });
@@ -244,7 +253,9 @@
 
   function refresh() {
     if (!shown) return;
-    list().then(function (snaps) {
+    var mods = window.simgolfMods;
+    Promise.all([list(), mods && mods.supported ? mods.list().catch(function () { return []; }) : null]).then(function (all) {
+      var snaps = all[0], modList = all[1];
       var h = '<h3>Save history</h3>';
       if (crashed) {
         h += '<div class="crash">The game crashed. Your saves are kept: reload the page and load the newest ' +
@@ -271,16 +282,63 @@
       h += '<p id="sv-msg">' + esc(msg) + '</p>';
       h += '<h3>Settings</h3><label class="row"><input type="checkbox" id="sv-edge"' +
         (edgeScrollOn() ? ' checked' : '') + '> Scroll the course when the pointer touches a screen edge</label>';
+      if (modList) h += modsHtml(modList);
       if (Module.savePanelFooter) h += Module.savePanelFooter;   // extra controls from the page
       panel.innerHTML = h;
     }).catch(function (e) { panel.textContent = 'Save history unavailable: ' + e; });
   }
+  // ---- mods (web/mods.js)
+  var modMsg = '';
+  function modsHtml(mods) {
+    var loaded = window.simgolfMods.loaded().join('\n');
+    var now = mods.filter(function (m) { return m.on; }).map(function (m) { return m.id; }).join('\n');
+    var h = '<h3 style="margin-top:14px">Mods</h3><p class="note">Mods add theme packs, characters, stories and other game files ' +
+      'from a .zip. Pick a theme pack with Select A Theme on the main menu. Later mods in the list win when ' +
+      'two change the same file.</p>';
+    h += '<div class="bar"><button data-a="mod-add">Add mod (.zip)…</button></div>';
+    mods.forEach(function (m, i) {
+      h += '<div class="row' + (m.on ? '' : ' off') + '" title="' + esc(m.description) + '">' +
+        '<input type="checkbox" data-mod="' + esc(m.id) + '"' + (m.on ? ' checked' : '') + '>' +
+        '<span>' + esc(m.name) + (m.version ? ' <small>' + esc(m.version) + '</small>' : '') +
+        (m.author ? ' <small>by ' + esc(m.author) + '</small>' : '') + '</span>' +
+        (i ? '<button data-a="mod-up" data-mod="' + esc(m.id) + '" title="Load earlier">↑</button>' : '') +
+        (i < mods.length - 1 ? '<button data-a="mod-down" data-mod="' + esc(m.id) + '" title="Load later">↓</button>' : '') +
+        '<button data-a="mod-remove" data-mod="' + esc(m.id) + '">Remove</button></div>';
+    });
+    if (now !== loaded) h += '<p class="note mods-note">Reload the page to apply mod changes. <button data-a="mod-reload">Reload</button></p>';
+    h += '<p id="sv-modmsg" class="note">' + esc(modMsg) + '</p>';
+    return h;
+  }
+  function modSay(m) { modMsg = m; refresh(); }
+  modFile.addEventListener('change', function () {
+    var files = Array.prototype.slice.call(modFile.files);
+    modFile.value = '';
+    modSay('Installing…');
+    files.reduce(function (p, f) {
+      return p.then(function (done) {
+        return window.simgolfMods.install(f).then(function (r) { return done.concat('"' + r.name + '"'); });
+      });
+    }, Promise.resolve([])).then(function (names) {
+      modSay('Installed ' + names.join(', ') + '.');
+    }, function (e) { modSay('Couldn\'t install: ' + (e && e.message || e)); });
+  });
+  function modAction(a, id) {
+    var m = window.simgolfMods;
+    if (a === 'mod-add') { modFile.click(); return; }
+    if (a === 'mod-reload') { flush(); location.reload(); return; }
+    if (a === 'mod-remove' && !confirm('Remove this mod from the browser?')) return;
+    (a === 'mod-up' ? m.move(id, -1) : a === 'mod-down' ? m.move(id, 1) : m.remove(id)).then(function () { modSay(''); },
+      function (e) { modSay(String(e && e.message || e)); });
+  }
+
   function edgeScrollOn() {
     if (Module.edgeScroll !== undefined) return Module.edgeScroll;
     try { return localStorage.getItem('simgolf-edge-scroll') !== '0'; } catch (e) { return true; }
   }
   // Edge scrolling (read by the game in src/port/win32.c, js_edge_state).
   panel.addEventListener('change', function (e) {
+    var mod = e.target.getAttribute && e.target.getAttribute('data-mod');
+    if (mod) { window.simgolfMods.setOn(mod, e.target.checked).then(function () { modSay(''); }); return; }
     if (e.target.id !== 'sv-edge') return;
     Module.edgeScroll = e.target.checked;
     try { localStorage.setItem('simgolf-edge-scroll', e.target.checked ? '1' : '0'); } catch (err) {}
@@ -289,6 +347,7 @@
     var a = e.target.getAttribute && e.target.getAttribute('data-a');
     if (!a) return;
     if (a === 'import') { file.click(); return; }
+    if (a.lastIndexOf('mod-', 0) === 0) { modAction(a, e.target.getAttribute('data-mod')); return; }
     if (Module.onSavePanelAction && Module.onSavePanelAction(a)) return;
     var id = a === 'latest' ? null : Number(e.target.getAttribute('data-id'));
     (id === null ? list().then(function (s) { return get(s[0].id); }) : get(id)).then(function (snap) {
