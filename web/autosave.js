@@ -297,8 +297,30 @@
         (edgeScrollOn() ? ' checked' : '') + '> Scroll the course when the pointer touches a screen edge</label>';
       if (modList) h += modsHtml(modList);
       if (Module.savePanelFooter) h += Module.savePanelFooter;   // extra controls from the page
+      h += keysHtml();
       panel.innerHTML = h;
     }).catch(function (e) { panel.textContent = 'Save history unavailable: ' + e; });
+  }
+  // ---- keys and tips
+  var mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  function keysHtml() {
+    var fn = mac ? 'Fn+' : '';
+    var keys = [
+      [mac ? 'Option+S' : 'Alt+S', 'open or close this panel'],
+      [mac ? 'Ctrl+Cmd+F' : 'F11', 'full screen (the browser\'s own key)'],
+      ['Arrow keys', 'scroll the course'],
+      [fn + 'Ctrl+F9', 'high-resolution course terrain on/off'],
+      [fn + 'Ctrl+F10', 'scaling: xBR, nearest, smooth'],
+      [fn + 'Ctrl+F11', 'all high-resolution drawing on/off'],
+    ];
+    var h = '<h3 style="margin-top:14px">Keys and tips</h3>';
+    keys.forEach(function (k) {
+      h += '<div class="row"><span><b>' + esc(k[0]) + '</b> <small>' + esc(k[1]) + '</small></span></div>';
+    });
+    h += '<p class="note" style="margin-top:6px">A key press or click skips the intro video. Saves live in this ' +
+      'browser, so download them before clearing site data. More in the ' +
+      '<a href="https://github.com/RichardAtCT/simgolf-web#readme" target="_blank" rel="noopener" style="color:#9cf">readme</a>.</p>';
+    return h;
   }
   // ---- mods (web/mods.js)
   var modMsg = '';
