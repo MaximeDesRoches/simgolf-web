@@ -21,7 +21,11 @@ your computer:
   macOS:   ~/Library/Application Support/SimGolf/
   Windows: %APPDATA%\SimGolf\
 
-Your saves are in the game/Saved Games folder there.
+Your saves are in the game/Saved Games folder there; Ctrl+F8 in the game
+opens it. To bring a save over from the browser version, download it from
+the browser's Saves panel (Ctrl+F8 there) and put the .sve file in that
+folder; to go the other way, Import it in the browser's Saves panel. Saves
+from the original 2002 game work too. Updating the app keeps your saves.
 
 Opening the app the first time
 ------------------------------
@@ -42,6 +46,7 @@ Keys
   Ctrl+F9    high-resolution course terrain on/off
   Ctrl+F10   scaling: xBR (default), nearest, smooth
   Ctrl+F11   all high-resolution drawing on/off
+  Ctrl+F8    open your saves folder
   A key press or click skips the intro video.
   Everything else is the game's own keys.
 

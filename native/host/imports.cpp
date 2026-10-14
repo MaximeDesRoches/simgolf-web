@@ -5,6 +5,7 @@
 #include <SDL.h>
 
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -272,6 +273,29 @@ static void run_script() {
 
 // ------------------------------------------------------------------ input
 
+static void open_saves_folder() {
+  std::string dir = g_paths.game + "/Saved Games";
+  std::error_code ec;
+  std::filesystem::create_directories(upath(dir), ec);
+  std::string url = "file://";
+  if (!dir.empty() && dir[0] != '/') url += '/';   // C:/...
+  for (unsigned char c : dir) {
+    if (c == '\\') c = '/';
+    if (isalnum(c) || strchr("/._~:-", c)) url += (char)c;
+    else {
+      char hex[4];
+      snprintf(hex, sizeof hex, "%%%02X", c);
+      url += hex;
+    }
+  }
+  if (g_opts.fullscreen) {
+    g_opts.fullscreen = false;
+    apply_fullscreen();
+    save_options();
+  }
+  if (SDL_OpenURL(url.c_str()) != 0) fprintf(stderr, "saves folder %s: %s\n", url.c_str(), SDL_GetError());
+}
+
 static bool host_shortcut(const SDL_KeyboardEvent &k) {
   const SDL_Keycode sym = k.keysym.sym;
   const Uint16 mod = k.keysym.mod;
@@ -297,6 +321,12 @@ static bool host_shortcut(const SDL_KeyboardEvent &k) {
       apply_fullscreen();
       save_options();
     }
+    return true;
+  }
+  // Ctrl+F8 (the browser's Saves panel key): the saves folder in Finder or
+  // Explorer, leaving full screen so its window shows.
+  if (sym == SDLK_F8 && (mod & KMOD_CTRL)) {
+    if (k.type == SDL_KEYDOWN && !k.repeat) open_saves_folder();
     return true;
   }
   // Cmd+Q on macOS
