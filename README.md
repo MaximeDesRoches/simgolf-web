@@ -48,6 +48,10 @@ graphics, the 3D terrain renderer and sound are replaced with browser
 implementations. [docs/porting.md](docs/porting.md) explains the approach and
 [docs/building.md](docs/building.md) how to build it yourself.
 
+The same code also runs as a desktop app for macOS and Windows: the
+WebAssembly module is translated back to native code with wasm2c and runs in
+a small SDL2 host ([native/README.md](native/README.md)).
+
 ## Legal
 
 This is an unofficial fan project, not affiliated with or endorsed by

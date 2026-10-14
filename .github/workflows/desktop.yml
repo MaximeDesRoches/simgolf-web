@@ -1,0 +1,113 @@
+# Desktop builds (native/README.md): the SimGolf app for macOS (universal
+# .dmg) and Windows (x64 .zip), unsigned. The game module, golf-host.wasm, is
+# built on a machine with the translated game (tools/native/build-mac.sh) and
+# published as a release asset; these jobs translate it with wasm2c and build
+# the host around it. No game files are involved.
+#
+# Run it from the Actions tab (wasm_url defaults to the "game-module"
+# release), or push a desktop-v* tag to also attach the builds to a draft
+# release.
+name: Desktop builds
+
+on:
+  workflow_dispatch:
+    inputs:
+      wasm_url:
+        description: URL of golf-host.wasm
+        default: https://github.com/RichardAtCT/simgolf-web/releases/download/game-module/golf-host.wasm
+      version:
+        description: App version
+        default: 0.1.0
+  push:
+    tags: ['desktop-v*']
+
+env:
+  WABT: '1.0.42'   # must match third_party/wasm2c-rt
+  WASM_URL: ${{ inputs.wasm_url || 'https://github.com/RichardAtCT/simgolf-web/releases/download/game-module/golf-host.wasm' }}
+  VERSION: ${{ inputs.version || '0.1.0' }}
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          brew install ninja
+          curl -sL "https://github.com/WebAssembly/wabt/releases/download/$WABT/wabt-$WABT-macos-arm64.tar.gz" | tar xz
+          echo "$PWD/wabt-$WABT/bin" >> "$GITHUB_PATH"
+      - name: Game module
+        run: |
+          mkdir -p build/guest
+          curl -fsSL -o build/guest/golf-host.wasm "$WASM_URL"
+          shasum -a 256 build/guest/golf-host.wasm
+      - name: Build
+        run: |
+          [ "${GITHUB_REF_TYPE}" = tag ] && VERSION="${GITHUB_REF_NAME#desktop-v}"
+          SIMGOLF_VERSION="$VERSION" SIMGOLF_WASM=build/guest/golf-host.wasm tools/native/build-mac.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SimGolf-mac
+          path: build/native-release/SimGolf-*-mac.dmg
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-zlib zip curl tar
+      - name: Tools
+        run: |
+          curl -sL "https://github.com/WebAssembly/wabt/releases/download/$WABT/wabt-$WABT-windows-x64.tar.gz" | tar xz
+          echo "$(cygpath -w "$PWD/wabt-$WABT/bin")" >> "$GITHUB_PATH"
+          export PATH="$PWD/wabt-$WABT/bin:$PATH"
+          wasm2c --version
+      - name: Game module
+        run: |
+          mkdir -p build/guest
+          curl -fsSL -o build/guest/golf-host.wasm "$WASM_URL"
+          sha256sum build/guest/golf-host.wasm
+      - name: Build
+        run: |
+          export PATH="$PWD/wabt-$WABT/bin:$PATH"
+          [ "${GITHUB_REF_TYPE}" = tag ] && VERSION="${GITHUB_REF_NAME#desktop-v}"
+          OUT=build/native-win
+          cmake -G Ninja -B $OUT -S native/host -DSIMGOLF_WASM=build/guest/golf-host.wasm \
+            -DCMAKE_BUILD_TYPE=Release -DSIMGOLF_BUNDLED_SDL=ON -DSIMGOLF_VERSION="$VERSION"
+          cmake --build $OUT --target SimGolf
+          mkdir -p $OUT/SimGolf
+          cp $OUT/SimGolf.exe $OUT/SimGolf/
+          cp -R $OUT/resources $OUT/SimGolf/
+          cp native/README-players.txt "$OUT/SimGolf/Read me first.txt"
+          (cd $OUT && zip -qr "SimGolf-$VERSION-windows.zip" SimGolf)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SimGolf-windows
+          path: build/native-win/SimGolf-*-windows.zip
+
+  draft-release:
+    if: github.ref_type == 'tag'
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft \
+            --title "SimGolf desktop ${GITHUB_REF_NAME#desktop-v}" \
+            --notes "Unsigned desktop builds. Bring your own SimGolf disc image and v1.02 no-CD golf.exe; see Read me first.txt in each download."

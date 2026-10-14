@@ -7,6 +7,13 @@
 
 #include <stdint.h>
 
+#ifdef SIMGOLF_HOST
+// Native desktop build (wasi-sdk): wasi-libc's <stdint.h> already defines
+// size_t as unsigned long, and Ghidra's types define it again as uint. Both
+// are 32 bits on wasm32, so Ghidra's goes by another name.
+#define size_t ghidra_size_t
+#endif
+
 #define __cdecl
 #define __stdcall
 #define __thiscall

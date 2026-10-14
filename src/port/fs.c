@@ -244,14 +244,12 @@ void fs_deleted(const char *real) { js_persist_file(real, 1); }
 
 void fs_init(void) {
   mkdir(FS_GAME_ROOT, 0777);
+  // No manifest in the native desktop build: the game files are on disk.
   FILE *f = fopen("/game.manifest", "r");
-  if (!f) {
-    fprintf(stderr, "fs: no /game.manifest\n");
-    return;
-  }
+  if (!f) fprintf(stderr, "fs: no /game.manifest, using the files in " FS_GAME_ROOT "\n");
   char line[600];
   int cap = 0;
-  while (fgets(line, sizeof line, f)) {
+  while (f && fgets(line, sizeof line, f)) {
     char *tab = strchr(line, '\t');
     if (!tab) continue;
     *tab = 0;
@@ -265,7 +263,7 @@ void fs_init(void) {
     e->size = (unsigned)strtoul(tab + 1, NULL, 10);
     e->fetched = 0;
   }
-  fclose(f);
+  if (f) fclose(f);
   g_hcap = 1;
   while (g_hcap < g_count * 2) g_hcap <<= 1;
   g_hash = calloc(g_hcap, sizeof(int));
