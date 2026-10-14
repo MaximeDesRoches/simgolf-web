@@ -81,8 +81,13 @@ jobs:
           [ "${GITHUB_REF_TYPE}" = tag ] && VERSION="${GITHUB_REF_NAME#desktop-v}"
           OUT=build/native-win
           cmake -G Ninja -B $OUT -S native/host -DSIMGOLF_WASM=build/guest/golf-host.wasm \
-            -DCMAKE_BUILD_TYPE=Release -DSIMGOLF_BUNDLED_SDL=ON -DSIMGOLF_VERSION="$VERSION"
+            -DCMAKE_BUILD_TYPE=Release -DSIMGOLF_BUNDLED_SDL=ON -DSIMGOLF_BUNDLED_ZLIB=ON -DSIMGOLF_VERSION="$VERSION"
           cmake --build $OUT --target SimGolf
+          # The zip ships SimGolf.exe alone: it may only need DLLs every Windows has.
+          dlls=$(objdump -p $OUT/SimGolf.exe | sed -n 's/^\s*DLL Name: //p')
+          echo "$dlls"
+          extra=$(echo "$dlls" | grep -viE '^(advapi32|comdlg32|gdi32|imm32|kernel32|ole32|oleaut32|opengl32|setupapi|shell32|user32|version|winmm|api-ms-win-crt-.*)\.dll$' || true)
+          if [ -n "$extra" ]; then echo "::error::SimGolf.exe needs DLLs the zip doesn't ship: $extra"; exit 1; fi
           mkdir -p $OUT/SimGolf
           cp $OUT/SimGolf.exe $OUT/SimGolf/
           cp -R $OUT/resources $OUT/SimGolf/
