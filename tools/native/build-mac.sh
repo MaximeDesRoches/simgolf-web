@@ -34,6 +34,11 @@ ln -s /Applications "$stage/Applications"
 cp native/README-players.txt "$stage/Read me first.txt"
 dmg="$OUT/SimGolf-$VERSION-mac.dmg"
 rm -f "$dmg"
-hdiutil create -volname "SimGolf" -srcfolder "$stage" -ov -format UDZO "$dmg" >/dev/null
+# hdiutil sometimes fails with "Resource busy" on CI runners; try again.
+for i in 1 2 3 4 5; do
+  hdiutil create -volname "SimGolf" -srcfolder "$stage" -ov -format UDZO "$dmg" >/dev/null && break
+  [ $i = 5 ] && exit 1
+  sleep $((i * 5))
+done
 rm -rf "$stage"
 ls -la "$dmg"
