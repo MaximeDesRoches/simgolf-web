@@ -1,0 +1,24 @@
+{
+  "profession": "Lifeguard",
+  "name": "Dottie Fairway",
+  "personality": ["active", "playful"],
+  "gender": "female",
+  "age": "young",
+  "marital": "single",
+  "head": 12,
+  "hat": 1,
+  "body": 1,
+  "shirt": 4,
+  "pants": 2,
+  "outfit": 0,
+  "skin": 1,
+  "hair": 1,
+  "prefers": ["accuracy", "imagination"],
+  "quotes": {
+    "greeting": "Surf's up and so is my handicap!",
+    "good shot": "Did everyone see that? MYNAME is on fire!",
+    "water": "Don't worry, I'll fish it out.",
+    "slow play": "I could swim to the next hole faster.",
+    "likes a feature": "Ooh, that DATA is gorgeous."
+  }
+}

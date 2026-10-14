@@ -1,0 +1,24 @@
+{
+  "profession": "Harbour Master",
+  "name": "Captain Reed",
+  "personality": ["outgoing", "nice"],
+  "gender": "male",
+  "age": "mature",
+  "marital": "widowed",
+  "head": 3,
+  "hat": 7,
+  "body": 0,
+  "shirt": 7,
+  "pants": 9,
+  "outfit": 0,
+  "skin": 0,
+  "prefers": ["length"],
+  "quotes": {
+    "greeting": "Fair winds and following seas, PARTNER!",
+    "good shot": "Straight out of the harbour, that one.",
+    "water": "Man overboard!",
+    "dislikes a feature": "That DATA would sink a battleship.",
+    "thirsty": "My throat is drier than a sandbar.",
+    "sat on a bench": "Ah, a fine place to watch the tide."
+  }
+}

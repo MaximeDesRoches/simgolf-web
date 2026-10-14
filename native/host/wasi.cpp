@@ -1,5 +1,5 @@
 // The WASI (preview 1) calls wasi-libc makes for the game: files and
-// directories under four preopened folders, stdout/stderr, the clock and
+// directories under five preopened folders, stdout/stderr, the clock and
 // exit. Everything else returns ENOSYS. Paths are UTF-8 on every platform
 // (std::filesystem converts on Windows).
 
@@ -153,6 +153,7 @@ void wasi_init() {
   pre("/image", g_paths.image);
   pre("/fonts", g_paths.fonts);
   pre("/assets", g_paths.cache);
+  pre("/mods", g_paths.mods);
 }
 
 #define WASI(ret, name, ...) extern "C" ret w2c_wasi__snapshot__preview1_##name(struct w2c_wasi__snapshot__preview1 *, __VA_ARGS__)

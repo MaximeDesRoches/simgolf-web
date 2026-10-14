@@ -242,7 +242,143 @@ void fs_written(const char *real) {
 
 void fs_deleted(const char *real) { js_persist_file(real, 1); }
 
+// Mods (docs/modding.md). Each enabled mod is a folder /mods/<id>/files laid
+// out like the game folder; its files are read in place of the game's (or
+// added next to them) and show up in directory listings. /mods/order.txt lists
+// the enabled ids, one per line, later ones winning; without it every folder
+// in /mods is loaded in name order. The web page copies the enabled mods there
+// from its own storage; the desktop app maps /mods to its mods folder.
+// Writes always go to the game folder.
+typedef struct {
+  char *rel;    // path relative to the mod's files folder, '/' separated
+  char *lower;  // lowercased rel: the lookup key
+  char *real;   // absolute path
+  unsigned size;
+} ModFile;
+
+static ModFile *g_mods;
+static int g_mod_count, g_mod_cap;
+static int *g_mod_hash;  // index+1, 0 = empty
+static int g_mod_hcap;
+
+static int mod_lookup(const char *lower) {
+  if (!g_mod_hcap) return -1;
+  unsigned i = hash_str(lower) & (g_mod_hcap - 1);
+  while (g_mod_hash[i]) {
+    if (!strcmp(g_mods[g_mod_hash[i] - 1].lower, lower)) return g_mod_hash[i] - 1;
+    i = (i + 1) & (g_mod_hcap - 1);
+  }
+  return -1;
+}
+
+static void mod_rehash(void) {
+  free(g_mod_hash);
+  g_mod_hcap = g_mod_hcap ? g_mod_hcap * 2 : 128;
+  g_mod_hash = calloc(g_mod_hcap, sizeof(int));
+  for (int i = 0; i < g_mod_count; i++) {
+    unsigned h = hash_str(g_mods[i].lower) & (g_mod_hcap - 1);
+    while (g_mod_hash[h]) h = (h + 1) & (g_mod_hcap - 1);
+    g_mod_hash[h] = i + 1;
+  }
+}
+
+static void mod_add(const char *rel, const char *real, unsigned size) {
+  char *low = lower_dup(rel);
+  int i = mod_lookup(low);
+  if (i >= 0) {  // a later mod replaces an earlier one's file
+    free(low);
+    free(g_mods[i].real);
+    g_mods[i].real = strdup(real);
+    g_mods[i].size = size;
+    return;
+  }
+  if (g_mod_count == g_mod_cap) {
+    g_mod_cap = g_mod_cap ? g_mod_cap * 2 : 64;
+    g_mods = realloc(g_mods, g_mod_cap * sizeof(ModFile));
+  }
+  ModFile *m = &g_mods[g_mod_count++];
+  m->rel = strdup(rel);
+  m->lower = low;
+  m->real = strdup(real);
+  m->size = size;
+  if (g_mod_count * 2 > g_mod_hcap) {
+    mod_rehash();
+  } else {
+    unsigned h = hash_str(low) & (g_mod_hcap - 1);
+    while (g_mod_hash[h]) h = (h + 1) & (g_mod_hcap - 1);
+    g_mod_hash[h] = g_mod_count;
+  }
+}
+
+static void mod_walk(const char *abs, const char *rel) {
+  DIR *d = opendir(abs);
+  if (!d) return;
+  struct dirent *de;
+  while ((de = readdir(d))) {
+    if (de->d_name[0] == '.') continue;  // ., .., .DS_Store
+    char a[600], r[512];
+    snprintf(a, sizeof a, "%s/%s", abs, de->d_name);
+    snprintf(r, sizeof r, "%s%s%s", rel, *rel ? "/" : "", de->d_name);
+    struct stat st;
+    if (stat(a, &st) != 0) continue;
+    if (S_ISDIR(st.st_mode)) mod_walk(a, r);
+    else if (*rel || (strcasecmp(de->d_name, "mod.json") && strcasecmp(de->d_name, "order.txt"))) mod_add(r, a, (unsigned)st.st_size);
+  }
+  closedir(d);
+}
+
+static int cmp_str(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
+
+static void mod_load(const char *id) {
+  if (!*id || strchr(id, '/') || !strcmp(id, "..")) return;
+  // A mod's files sit in its files/ folder next to mod.json. A folder without
+  // files/ is used as is, so an old theme pack unzipped into mods/ (Themes/...)
+  // works too.
+  char abs[600];
+  struct stat st;
+  snprintf(abs, sizeof abs, FS_MODS_ROOT "/%s/files", id);
+  if (stat(abs, &st) != 0 || !S_ISDIR(st.st_mode)) snprintf(abs, sizeof abs, FS_MODS_ROOT "/%s", id);
+  int before = g_mod_count;
+  mod_walk(abs, "");
+  fprintf(stderr, "fs: mod %s: %d files\n", id, g_mod_count - before);
+}
+
+static void mods_init(void) {
+  FILE *f = fopen(FS_MODS_ROOT "/order.txt", "r");
+  if (f) {
+    char line[256];
+    while (fgets(line, sizeof line, f)) {
+      line[strcspn(line, "\r\n")] = 0;
+      if (line[0] != '#') mod_load(line);
+    }
+    fclose(f);
+  } else {
+    DIR *d = opendir(FS_MODS_ROOT);
+    if (!d) return;
+    char **ids = NULL;
+    int n = 0;
+    struct dirent *de;
+    while ((de = readdir(d))) {
+      if (de->d_name[0] == '.') continue;
+      char p[600];
+      struct stat st;
+      snprintf(p, sizeof p, FS_MODS_ROOT "/%s", de->d_name);
+      if (stat(p, &st) != 0 || !S_ISDIR(st.st_mode)) continue;
+      ids = realloc(ids, (n + 1) * sizeof(char *));
+      ids[n++] = strdup(de->d_name);
+    }
+    closedir(d);
+    qsort(ids, n, sizeof(char *), cmp_str);
+    for (int i = 0; i < n; i++) {
+      mod_load(ids[i]);
+      free(ids[i]);
+    }
+    free(ids);
+  }
+}
+
 void fs_init(void) {
+  mods_init();
   mkdir(FS_GAME_ROOT, 0777);
   // No manifest in the native desktop build: the game files are on disk.
   FILE *f = fopen("/game.manifest", "r");
@@ -345,6 +481,14 @@ int fs_resolve(const char *dospath, char *out, int outlen, int for_write) {
   char rel[512];
   normalize(dospath, rel, sizeof rel);
   char *low = lower_dup(rel);
+  if (!for_write) {
+    int m = mod_lookup(low);
+    if (m >= 0) {
+      free(low);
+      snprintf(out, outlen, "%s", g_mods[m].real);
+      return 1;
+    }
+  }
   int i = lookup(low);
   free(low);
   if (i >= 0) {
@@ -379,6 +523,34 @@ static int wild_match(const char *pat, const char *s) {
   return 0;
 }
 
+// Names already reported by fs_list (case-insensitive, as on Windows).
+typedef struct {
+  char **names;
+  int n, cap;
+} Seen;
+
+static int seen_add(Seen *s, const char *name) {
+  for (int k = 0; k < s->n; k++)
+    if (!strcasecmp(s->names[k], name)) return 0;
+  if (s->n == s->cap) {
+    s->cap = s->cap ? s->cap * 2 : 256;
+    s->names = realloc(s->names, s->cap * sizeof(char *));
+  }
+  s->names[s->n++] = strdup(name);
+  return 1;
+}
+
+// Whether some mod has files under `dir` (game-relative, '/' separated).
+static int mod_has_dir(const char *dir) {
+  char *ldir = lower_dup(dir);
+  size_t dl = strlen(ldir);
+  int found = 0;
+  for (int i = 0; i < g_mod_count && !found; i++)
+    found = !strncmp(g_mods[i].lower, ldir, dl) && g_mods[i].lower[dl] == '/';
+  free(ldir);
+  return found;
+}
+
 int fs_list(const char *dospattern, fs_list_fn fn, void *ctx) {
   char rel[512];
   normalize(dospattern, rel, sizeof rel);
@@ -389,48 +561,71 @@ int fs_list(const char *dospattern, fs_list_fn fn, void *ctx) {
     memcpy(dir, rel, slash - rel);
     dir[slash - rel] = 0;
   }
-  char absdir[600];
-  if (dir[0]) {
-    if (!walk_fs(dir, absdir, sizeof absdir, 0)) return 0;
-  } else {
-    snprintf(absdir, sizeof absdir, "%s", FS_GAME_ROOT);
-  }
   int n = 0;
-  // Everything in the FS directory: subdirectories, fetched and written files.
-  // Unfetched manifest files exist as names only, so list those separately.
-  DIR *d = opendir(absdir);
-  char seen[256][128];
-  int nseen = 0;
-  if (d) {
-    struct dirent *de;
-    while ((de = readdir(d))) {
-      if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
-      if (!wild_match(pat, de->d_name)) continue;
-      char p[800];
-      snprintf(p, sizeof p, "%s/%s", absdir, de->d_name);
-      struct stat st;
-      stat(p, &st);
-      fn(ctx, de->d_name, S_ISDIR(st.st_mode), (unsigned)st.st_size);
-      if (nseen < 256) snprintf(seen[nseen++], 128, "%s", de->d_name);
+  Seen seen = {0};
+  char absdir[600];
+  int have_dir = 1;
+  if (dir[0]) have_dir = walk_fs(dir, absdir, sizeof absdir, 0) || mod_has_dir(dir);
+  else snprintf(absdir, sizeof absdir, "%s", FS_GAME_ROOT);
+  // Windows lists "." and ".." first in a subfolder, and the theme screen
+  // (FUN_004725b0) skips the first entry of Themes\*.* on that basis.
+  if (dir[0] && have_dir && wild_match(pat, ".")) {
+    seen_add(&seen, ".");
+    seen_add(&seen, "..");
+    fn(ctx, ".", 1, 0);
+    fn(ctx, "..", 1, 0);
+    n += 2;
+  }
+  if (have_dir && (!dir[0] || walk_fs(dir, absdir, sizeof absdir, 0))) {
+    // Everything in the FS directory: subdirectories, fetched and written
+    // files. Unfetched manifest files exist as names only, so list those
+    // separately.
+    DIR *d = opendir(absdir);
+    if (d) {
+      struct dirent *de;
+      while ((de = readdir(d))) {
+        if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
+        if (!wild_match(pat, de->d_name) || !seen_add(&seen, de->d_name)) continue;
+        char p[800];
+        snprintf(p, sizeof p, "%s/%s", absdir, de->d_name);
+        struct stat st;
+        stat(p, &st);
+        fn(ctx, de->d_name, S_ISDIR(st.st_mode), (unsigned)st.st_size);
+        n++;
+      }
+      closedir(d);
+    }
+    const char *reldir = absdir + strlen(FS_GAME_ROOT);
+    if (*reldir == '/') reldir++;
+    size_t dl = strlen(reldir);
+    for (int i = 0; i < g_count; i++) {
+      const char *p = g_entries[i].path;
+      if (dl && (strncmp(p, reldir, dl) || p[dl] != '/')) continue;
+      const char *name = dl ? p + dl + 1 : p;
+      if (strchr(name, '/')) continue;
+      if (!wild_match(pat, name) || !seen_add(&seen, name)) continue;
+      fn(ctx, name, 0, g_entries[i].size);
       n++;
     }
-    closedir(d);
   }
-  const char *reldir = absdir + strlen(FS_GAME_ROOT);
-  if (*reldir == '/') reldir++;
-  size_t dl = strlen(reldir);
-  for (int i = 0; i < g_count; i++) {
-    const char *p = g_entries[i].path;
-    if (dl && (strncmp(p, reldir, dl) || p[dl] != '/')) continue;
-    const char *name = dl ? p + dl + 1 : p;
-    if (strchr(name, '/')) continue;
-    if (!wild_match(pat, name)) continue;
-    int dup = 0;
-    for (int k = 0; k < nseen; k++)
-      if (!strcmp(seen[k], name)) { dup = 1; break; }
-    if (dup) continue;
-    fn(ctx, name, 0, g_entries[i].size);
-    n++;
+  // Files and folders only mods have.
+  if (g_mod_count) {
+    char *ldir = lower_dup(dir);
+    size_t dl = strlen(ldir);
+    for (int i = 0; i < g_mod_count; i++) {
+      const ModFile *m = &g_mods[i];
+      if (dl && (strncmp(m->lower, ldir, dl) || m->lower[dl] != '/')) continue;
+      const char *name = m->rel + (dl ? dl + 1 : 0);
+      const char *sub = strchr(name, '/');
+      char first[256];
+      snprintf(first, sizeof first, "%.*s", sub ? (int)(sub - name) : (int)strlen(name), name);
+      if (!wild_match(pat, first) || !seen_add(&seen, first)) continue;
+      fn(ctx, first, sub != NULL, sub ? 0 : m->size);
+      n++;
+    }
+    free(ldir);
   }
+  for (int k = 0; k < seen.n; k++) free(seen.names[k]);
+  free(seen.names);
   return n;
 }

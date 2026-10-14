@@ -2,7 +2,8 @@
 // ("Interface\\TitleBASE.pcx", "Saved Games\\x.sve"). The port mounts the
 // user's copy of the game at /game in the Emscripten FS: files listed in the
 // manifest are fetched from the server on first open, and paths are matched
-// case-insensitively as on Windows.
+// case-insensitively as on Windows. Mods under /mods are read in place of, or
+// next to, the game's files.
 
 #ifndef SIMGOLF_PORT_FS_H
 #define SIMGOLF_PORT_FS_H
@@ -12,6 +13,8 @@ extern "C" {
 #endif
 
 #define FS_GAME_ROOT "/game"
+// Enabled mods, one folder per mod (see fs.c).
+#define FS_MODS_ROOT "/mods"
 
 void fs_init(void);
 // Maps a game path to an absolute FS path in `out`. For reading, the file must

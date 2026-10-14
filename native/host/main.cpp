@@ -120,6 +120,7 @@ int main(int argc, char **argv) {
   // The game prints its paths with a trailing slash in places; keep /game bare.
   g_paths.image = g_paths.data + "image";
   g_paths.cache = g_paths.data + "cache";
+  g_paths.mods = g_paths.data + "mods";
   fs::create_directories(upath(g_paths.cache), ec);
   write_sound_list();
   load_script();

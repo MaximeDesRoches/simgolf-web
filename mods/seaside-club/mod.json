@@ -1,0 +1,8 @@
+{
+  "id": "seaside-club",
+  "name": "Seaside Club",
+  "version": "1.0",
+  "author": "SimGolf web port",
+  "description": "A small sample theme pack: two club regulars and one story. Pick it with Select A Theme on the main menu.",
+  "game": "simgolf-1.02"
+}

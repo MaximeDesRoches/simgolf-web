@@ -29,7 +29,8 @@ The player's files go to the per-user app data folder
 (`SDL_GetPrefPath`: `~/Library/Application Support/SimGolf/`,
 `%APPDATA%\SimGolf\`): `game/` (the installed game; saves are written
 straight into `game/Saved Games`), `image/` (golf.bin, jgld.bin),
-`cache/sound-files.txt`, `settings.ini`.
+`cache/sound-files.txt`, `settings.ini`, and `mods/` (one folder per mod,
+mapped to `/mods` in the game; docs/modding.md).
 
 ## Building
 

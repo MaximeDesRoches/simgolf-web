@@ -56,6 +56,7 @@ if(EXISTS "${SIMGOLF_GEN}/golf/golf_protos.h")
 
   if(SIMGOLF_PAGES)
     configure_file(web/autosave.js "${CMAKE_BINARY_DIR}/autosave.js" COPYONLY)
+    configure_file(web/mods.js "${CMAKE_BINARY_DIR}/mods.js" COPYONLY)
     configure_file(web/pages/install-worker.js "${CMAKE_BINARY_DIR}/install-worker.js" COPYONLY)
     configure_file(web/pages/jgld-nops.json "${CMAKE_BINARY_DIR}/jgld-nops.json" COPYONLY)
     configure_file(web/pages/og.png "${CMAKE_BINARY_DIR}/og.png" COPYONLY)
@@ -81,6 +82,7 @@ if(EXISTS "${SIMGOLF_GEN}/golf/golf_protos.h")
     file(CREATE_LINK "${SIMGOLF_GAME}" "${CMAKE_BINARY_DIR}/game" SYMBOLIC)
     # Save history panel loaded by web/shell.html
     configure_file(web/autosave.js "${CMAKE_BINARY_DIR}/autosave.js" COPYONLY)
+    configure_file(web/mods.js "${CMAKE_BINARY_DIR}/mods.js" COPYONLY)
     set(SIMGOLF_SHELL "${CMAKE_SOURCE_DIR}/web/shell.html")
     set(SIMGOLF_DATA_OPTS -gsource-map -sEXPORTED_RUNTIME_METHODS=HEAPU8
       "SHELL:--preload-file \"${SIMGOLF_IMAGES}@/image\""

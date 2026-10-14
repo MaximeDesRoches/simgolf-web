@@ -35,6 +35,11 @@ Keys
   Ctrl+F10                                 smooth or sharp scaling
   Everything else is the game's own keys.
 
+Mods
+----
+Unzip a mod into the mods folder in the app data folder above, one folder
+per mod. Theme packs then show up under Select A Theme on the main menu.
+
 Settings (screen width for widescreen, edge scrolling, scaling) are in
 settings.ini in the app data folder.
 

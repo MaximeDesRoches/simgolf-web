@@ -51,13 +51,14 @@ struct Paths {
   std::string image;   // data/image: golf.bin, jgld.bin
   std::string cache;   // data/cache: files the host writes for the guest
   std::string fonts;   // bundled fonts (app resources)
+  std::string mods;    // data/mods: one folder per mod (src/port/fs.c)
 };
 extern Paths g_paths;
 
 // Maps a guest path ("/game/...", "assets/...") to a native one; "" if none.
 std::string guest_to_native(const std::string &path);
 
-// WASI: preopens /game, /image, /fonts and /assets (= cache).
+// WASI: preopens /game, /image, /fonts, /assets (= cache) and /mods.
 void wasi_init();
 
 // Ends the guest (WinMain returned, exit(), or the window was closed): traps
