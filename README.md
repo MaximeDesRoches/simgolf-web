@@ -25,12 +25,13 @@ the game, and it never leaves your computer.
 
 ## Good to know
 
-- Saves stay in your browser. Press **Ctrl+F8** in the game to download a
-  save or import one.
-- To start over with different files, press **Ctrl+F8** and use the button at
+- Saves stay in your browser. Press **Alt+S** (**Option+S** on a Mac) in the
+  game, or click the Saves button in the bottom-right corner, to download a
+  save or import one. Ctrl+F8 also works except on a Mac, where macOS keeps it.
+- To start over with different files, press **Alt+S** and use the button at
   the bottom of the panel.
 - To turn off scrolling the course by touching a screen edge with the
-  pointer, press **Ctrl+F8** and untick it under Settings (or add
+  pointer, press **Alt+S** and untick it under Settings (or add
   `?edgescroll=0` to the address). The arrow keys still scroll.
 - Clearing your browser's site data for the page removes the unpacked game
   and your saves (download the saves first).

@@ -10,7 +10,7 @@
 // database (a file the game was still writing when it crashed never gets
 // here, because fs.c reports a file only after it's closed). The newest 20
 // copies are kept, plus one per half hour before that, up to 20 more. A small
-// panel (the "Saves" button, or Ctrl+F8) lists them: Restore copies one back
+// panel (the "Saves" button, Alt+S, or Ctrl+F8) lists them: Restore copies one back
 // into Saved Games under a new name, to be loaded from the game's Load menu;
 // Download and Import move .sve files in and out of the browser. The panel
 // also lists mods when web/mods.js is loaded.
@@ -165,7 +165,7 @@
   var btn = document.createElement('button');
   btn.id = 'sv-btn';
   btn.textContent = 'Saves';
-  btn.title = 'Save history (Ctrl+F8)';
+  btn.title = 'Save history (Alt+S, or Option+S on a Mac)';
   var panel = document.createElement('div');
   panel.id = 'sv-panel';
   var file = document.createElement('input');
@@ -188,22 +188,35 @@
     btn.addEventListener(t, function (e) { e.stopPropagation(); });
   });
 
-  // The button sits in the margin beside the game; with no margin it hides
-  // (Ctrl+F8 still opens the panel, and a crash opens it anyway).
+  // The button sits in the margin beside the game. With no margin it would
+  // cover the game's corner, so it shows only for a few seconds after load and
+  // whenever the pointer comes near the bottom-right corner (Alt+S still opens
+  // the panel, and a crash opens it anyway).
+  var near = true;
+  setTimeout(function () { near = false; place(); }, 10000);
   function place() {
     var c = document.getElementById('canvas');
     var r = c ? c.getBoundingClientRect() : { right: 0, bottom: 0 };
     var room = innerWidth - r.right >= 80 || innerHeight - r.bottom >= 36;
-    btn.style.display = room || shown ? '' : 'none';
+    btn.style.display = room || shown || near ? '' : 'none';
   }
   addEventListener('resize', place);
+  addEventListener('mousemove', function (e) {
+    var v = innerWidth - e.clientX < 120 && innerHeight - e.clientY < 80;
+    if (v !== near) { near = v; place(); }
+  }, true);
   place();
 
   var shown = false, msg = '';
   function open(v) { shown = v; panel.style.display = v ? 'block' : 'none'; place(); if (v) refresh(); }
   btn.addEventListener('click', function () { open(!shown); });
   addEventListener('keydown', function (e) {
-    if (e.ctrlKey && e.key === 'F8') { e.preventDefault(); e.stopImmediatePropagation(); open(!shown); }
+    // Alt+S (Option+S on a Mac, matched by key position since Option types
+    // a symbol), or Ctrl+F8, which macOS keeps for itself.
+    var altS = e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyS';
+    if (altS || (e.ctrlKey && e.key === 'F8')) {
+      e.preventDefault(); e.stopImmediatePropagation(); if (!e.repeat) open(!shown);
+    }
   }, true);
 
   function pad(n) { return (n < 10 ? '0' : '') + n; }

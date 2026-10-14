@@ -52,7 +52,7 @@ python3 tools/mods/pack.py mods/seaside-club build/mods/seaside-club.zip
 
 ## Installing
 
-- **Browser:** Saves panel (Ctrl+F8, or the Saves button) → Mods → Add mod
+- **Browser:** Saves panel (Alt+S / Option+S, or the Saves button) → Mods → Add mod
   (.zip). Mods can be switched off, reordered (later ones win when two change
   the same file) or removed there; changes apply after a reload.
   `web/mods.js` keeps them in the origin private file system under

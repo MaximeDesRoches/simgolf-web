@@ -323,9 +323,11 @@ static bool host_shortcut(const SDL_KeyboardEvent &k) {
     }
     return true;
   }
-  // Ctrl+F8 (the browser's Saves panel key): the saves folder in Finder or
-  // Explorer, leaving full screen so its window shows.
-  if (sym == SDLK_F8 && (mod & KMOD_CTRL)) {
+  // Alt+S / Option+S or Ctrl+F8 (the browser's Saves panel keys; macOS keeps
+  // Ctrl+F8 for itself): the saves folder in Finder or Explorer, leaving full
+  // screen so its window shows.
+  bool alt_s = sym == SDLK_s && (mod & KMOD_ALT) && !(mod & (KMOD_CTRL | KMOD_GUI));
+  if (alt_s || (sym == SDLK_F8 && (mod & KMOD_CTRL))) {
     if (k.type == SDL_KEYDOWN && !k.repeat) open_saves_folder();
     return true;
   }
