@@ -1,5 +1,5 @@
 // Mods (docs/modding.md): installed into this browser from a .zip, managed in
-// the Saves panel (Ctrl+F8), and copied into the game's file system before it
+// the Saves panel (Alt+S), and copied into the game's file system before it
 // starts, where src/port/fs.c reads them in place of (or next to) the game's
 // own files.
 //
