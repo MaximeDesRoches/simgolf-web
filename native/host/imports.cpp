@@ -10,6 +10,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <map>
+#include <algorithm>
 #include <thread>
 #include <vector>
 
@@ -80,7 +82,9 @@ void save_options() {
 // ------------------------------------------------------------------ window
 
 static void apply_fullscreen() {
+#ifndef __IPHONEOS__
   SDL_SetWindowFullscreen(g_window, g_opts.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+#endif
 }
 
 static void apply_filter() {
@@ -117,8 +121,13 @@ extern "C" u32 w2c_env_SDL_CreateWindow(struct w2c_env *, u32 title, u32 x, u32 
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+#ifdef __IPHONEOS__
+  Uint32 wflags = SDL_WINDOW_FULLSCREEN | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_BORDERLESS;
+  bool want_gl = false;   // present_gl.cpp needs desktop OpenGL 3.3
+#else
   Uint32 wflags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
   bool want_gl = !getenv("SIMGOLF_NO_GL");
+#endif
   g_window = SDL_CreateWindow("SimGolf", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, ww, wh,
                               wflags | (want_gl ? SDL_WINDOW_OPENGL : 0));
   if (!g_window && want_gl)
@@ -339,8 +348,152 @@ static bool host_shortcut(const SDL_KeyboardEvent &k) {
   return false;
 }
 
+#ifdef __IPHONEOS__
+// ------------------------------------------------------------------ touch
+// SimGolf expects a mouse. On the iPad:
+//   tap               left click (two quick taps: double click)
+//   drag              left button held (painting terrain, dragging objects)
+//   touch and hold    right click
+//   two-finger drag   scrolls the course, like resting the pointer on that edge
+
+namespace {
+enum class Touch { Idle, Pending, Drag, Pan, Held };
+Touch g_touch = Touch::Idle;
+int g_fingers;
+float g_start_x, g_start_y, g_last_x, g_last_y;   // frame pixels
+double g_start_ms, g_tap_ms = -1e9;
+float g_tap_x, g_tap_y;
+float g_pan_x0, g_pan_y0, g_pan_x, g_pan_y;        // window points
+std::map<SDL_FingerID, std::pair<float, float>> g_finger_pos;
+const double kHoldMs = 450;
+const float kSlop = 8;      // frame pixels a tap may wander
+const float kPanDead = 24;  // window points before a two-finger drag scrolls
+}  // namespace
+
+static void to_frame(float nx, float ny, float *fx, float *fy) {
+  int ww, wh;
+  SDL_GetWindowSize(g_window, &ww, &wh);
+  float s = std::min((float)ww / g_w, (float)wh / g_h);
+  float vw = g_w * s, vh = g_h * s, vx = (ww - vw) / 2, vy = (wh - vh) / 2;
+  *fx = std::clamp((nx * ww - vx) / s, 0.0f, (float)g_w - 1);
+  *fy = std::clamp((ny * wh - vy) / s, 0.0f, (float)g_h - 1);
+}
+
+static void inject_motion(float x, float y, Uint32 buttons) {
+  SDL_Event e{};
+  e.type = SDL_MOUSEMOTION;
+  e.motion.x = (Sint32)x;
+  e.motion.y = (Sint32)y;
+  e.motion.state = buttons;
+  g_injected.push_back(e);
+}
+
+static void inject_button(float x, float y, Uint8 button, bool down, Uint8 clicks = 1) {
+  SDL_Event e{};
+  e.type = down ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
+  e.button.button = button;
+  e.button.state = down ? SDL_PRESSED : SDL_RELEASED;
+  e.button.clicks = clicks;
+  e.button.x = (Sint32)x;
+  e.button.y = (Sint32)y;
+  g_injected.push_back(e);
+}
+
+static void pan_centre(float *x, float *y) {
+  float sx = 0, sy = 0;
+  for (auto &[id, p] : g_finger_pos) { sx += p.first; sy += p.second; }
+  *x = sx / g_finger_pos.size();
+  *y = sy / g_finger_pos.size();
+}
+
+static void touch_event(const SDL_TouchFingerEvent &f, Uint32 type) {
+  int ww, wh;
+  SDL_GetWindowSize(g_window, &ww, &wh);
+  float fx, fy;
+  to_frame(f.x, f.y, &fx, &fy);
+  if (type == SDL_FINGERDOWN) {
+    g_finger_pos[f.fingerId] = {f.x * ww, f.y * wh};
+    if (++g_fingers == 1) {
+      g_touch = Touch::Pending;
+      g_start_x = g_last_x = fx;
+      g_start_y = g_last_y = fy;
+      g_start_ms = now_ms();
+      inject_motion(fx, fy, 0);
+    } else {
+      if (g_touch == Touch::Drag) inject_button(g_last_x, g_last_y, SDL_BUTTON_LEFT, false);
+      g_touch = Touch::Pan;
+      pan_centre(&g_pan_x0, &g_pan_y0);
+      g_pan_x = g_pan_x0;
+      g_pan_y = g_pan_y0;
+    }
+    return;
+  }
+  if (type == SDL_FINGERMOTION) {
+    g_finger_pos[f.fingerId] = {f.x * ww, f.y * wh};
+    if (g_touch == Touch::Pan) {
+      pan_centre(&g_pan_x, &g_pan_y);
+    } else if (g_touch == Touch::Pending && std::hypot(fx - g_start_x, fy - g_start_y) > kSlop) {
+      inject_button(g_start_x, g_start_y, SDL_BUTTON_LEFT, true);
+      g_touch = Touch::Drag;
+    }
+    if (g_touch == Touch::Drag) inject_motion(fx, fy, SDL_BUTTON_LMASK);
+    g_last_x = fx;
+    g_last_y = fy;
+    return;
+  }
+  // SDL_FINGERUP
+  g_finger_pos.erase(f.fingerId);
+  if (g_fingers > 0) g_fingers--;
+  if (g_fingers > 0) {
+    // the centre jumps when a finger lifts; restart the pan from there
+    if (g_touch == Touch::Pan) {
+      pan_centre(&g_pan_x0, &g_pan_y0);
+      g_pan_x = g_pan_x0;
+      g_pan_y = g_pan_y0;
+    }
+    return;
+  }
+  if (g_touch == Touch::Pending) {
+    double t = now_ms();
+    bool dbl = t - g_tap_ms < 350 && std::hypot(fx - g_tap_x, fy - g_tap_y) < 3 * kSlop;
+    inject_button(g_start_x, g_start_y, SDL_BUTTON_LEFT, true, dbl ? 2 : 1);
+    inject_button(g_start_x, g_start_y, SDL_BUTTON_LEFT, false, dbl ? 2 : 1);
+    g_tap_ms = dbl ? -1e9 : t;
+    g_tap_x = g_start_x;
+    g_tap_y = g_start_y;
+  } else if (g_touch == Touch::Drag) {
+    inject_button(fx, fy, SDL_BUTTON_LEFT, false);
+  }
+  g_touch = Touch::Idle;
+}
+
+// Touch and hold: a right click once the finger has stayed put long enough.
+static void touch_tick() {
+  if (g_touch != Touch::Pending || now_ms() - g_start_ms < kHoldMs) return;
+  inject_button(g_start_x, g_start_y, SDL_BUTTON_RIGHT, true);
+  inject_button(g_start_x, g_start_y, SDL_BUTTON_RIGHT, false);
+  g_touch = Touch::Held;
+}
+
+// js_edge_state for touch: a two-finger drag scrolls the way the fingers
+// push the course, as if the pointer rested on the opposite edge.
+static u32 touch_edge_state() {
+  if (!g_opts.edge_scroll) return 0x100;
+  int ex = 0, ey = 0;
+  if (g_touch == Touch::Pan) {
+    float dx = g_pan_x - g_pan_x0, dy = g_pan_y - g_pan_y0;
+    ex = dx < -kPanDead ? 1 : dx > kPanDead ? -1 : 0;
+    ey = dy < -kPanDead ? 1 : dy > kPanDead ? -1 : 0;
+  }
+  return (u32)((ex + 1) | ((ey + 1) << 2));
+}
+#endif
+
 extern "C" u32 w2c_env_SDL_PollEvent(struct w2c_env *, u32 out) {
   SDL_Event e;
+#ifdef __IPHONEOS__
+  touch_tick();
+#endif
   if (g_script_pos < g_script.size()) run_script();
   if (!g_injected.empty()) {
     e = g_injected.front();
@@ -350,6 +503,13 @@ extern "C" u32 w2c_env_SDL_PollEvent(struct w2c_env *, u32 out) {
   }
   while (SDL_PollEvent(&e)) {
     switch (e.type) {
+#ifdef __IPHONEOS__
+      case SDL_FINGERDOWN:
+      case SDL_FINGERMOTION:
+      case SDL_FINGERUP:
+        touch_event(e.tfinger, e.type);
+        continue;
+#endif
       case SDL_QUIT:
         guest_exit(0);
       case SDL_KEYDOWN:
@@ -393,6 +553,9 @@ extern "C" u32 w2c_env_SDL_PollEvent(struct w2c_env *, u32 out) {
 // 0 = low, 1 = none, 2 = high. Within 2 points of the game's edge, or out in
 // the bars beside it, counts as on that edge.
 extern "C" u32 w2c_host_js_edge_state(struct w2c_host *) {
+#ifdef __IPHONEOS__
+  return touch_edge_state();
+#endif
   if (!g_opts.edge_scroll) return 0x100;
   if (!g_window || SDL_GetMouseFocus() != g_window || !(SDL_GetWindowFlags(g_window) & SDL_WINDOW_INPUT_FOCUS))
     return 0x200;

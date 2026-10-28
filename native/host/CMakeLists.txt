@@ -14,6 +14,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 set(SIMGOLF_WASM "" CACHE FILEPATH "golf-host.wasm (from native/guest)")
 set(SIMGOLF_VERSION "0.1.0" CACHE STRING "App version")
+set(SIMGOLF_BUNDLE_ID "io.github.maximedesroches.simgolf" CACHE STRING "iOS bundle identifier")
+set(SIMGOLF_TEAM "" CACHE STRING "iOS signing team ID (Xcode > Settings > Accounts)")
 if(NOT SIMGOLF_WASM OR NOT EXISTS "${SIMGOLF_WASM}")
   message(FATAL_ERROR "Set SIMGOLF_WASM to golf-host.wasm (build native/guest first)")
 endif()
@@ -85,12 +87,42 @@ if(WIN32)
   target_compile_definitions(lzma7z PUBLIC UNICODE _UNICODE)
 endif()
 
-set(HOST_SRC main.cpp run.c wasi.cpp present_gl.cpp imports.cpp audio.cpp importer.cpp setup.cpp)
+set(IOS_BUILD OFF)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  set(IOS_BUILD ON)
+endif()
+if(IOS_BUILD)
+  # Game files bundled into the app; no OpenGL 3.3, no file picker (ios/ios.cpp)
+  set(SIMGOLF_GAMEDATA "" CACHE PATH "Data folder from tools/ios/make-gamedata.mjs")
+  if(NOT SIMGOLF_GAMEDATA OR NOT EXISTS "${SIMGOLF_GAMEDATA}/installed.txt")
+    message(FATAL_ERROR "Set SIMGOLF_GAMEDATA to the output of tools/ios/make-gamedata.mjs")
+  endif()
+  set(HOST_SRC main.cpp run.c wasi.cpp imports.cpp audio.cpp importer.cpp ios/ios.cpp)
+  # iOS caps an app's address space, so no 8 GB guard-page reservation
+  target_compile_definitions(w2c_golf PUBLIC WASM_RT_MEMCHECK_BOUNDS_CHECK=1)
+else()
+  set(HOST_SRC main.cpp run.c wasi.cpp present_gl.cpp imports.cpp audio.cpp importer.cpp setup.cpp)
+endif()
 set(RESOURCES "${ROOT}/third_party/fonts/LiberationSans-Regular.ttf" "${ROOT}/third_party/fonts/LiberationSans-Bold.ttf"
   "${ROOT}/third_party/fonts/LiberationSerif-Bold.ttf" "${ROOT}/third_party/fonts/ComicNeue-Bold.ttf"
   "${ROOT}/third_party/fonts/LICENSE" "${ROOT}/third_party/fonts/README.md")
 
-if(APPLE)
+if(IOS_BUILD)
+  add_executable(SimGolf MACOSX_BUNDLE ${HOST_SRC})
+  set_target_properties(SimGolf PROPERTIES
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/ios/Info.plist.in"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "${SIMGOLF_BUNDLE_ID}"
+    MACOSX_BUNDLE_BUNDLE_VERSION "${SIMGOLF_VERSION}"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${SIMGOLF_VERSION}"
+    XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${SIMGOLF_BUNDLE_ID}"
+    XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "2"
+    XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${SIMGOLF_TEAM}"
+    XCODE_ATTRIBUTE_CODE_SIGN_STYLE "Automatic")
+  add_custom_command(TARGET SimGolf POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_DIR:SimGolf>/fonts"
+    COMMAND ${CMAKE_COMMAND} -E copy ${RESOURCES} "$<TARGET_BUNDLE_DIR:SimGolf>/fonts/"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${SIMGOLF_GAMEDATA}" "$<TARGET_BUNDLE_DIR:SimGolf>/gamedata")
+elseif(APPLE)
   set(ICON "${CMAKE_CURRENT_SOURCE_DIR}/macos/SimGolf.icns")
   if(NOT EXISTS "${ICON}")
     set(ICON "")
@@ -125,5 +157,8 @@ target_include_directories(SimGolf PRIVATE "${ROOT}/third_party/stb")
 if(TARGET SDL2::SDL2main)
   target_link_libraries(SimGolf PRIVATE SDL2::SDL2main)
 endif()
-find_package(OpenGL REQUIRED)
-target_link_libraries(SimGolf PRIVATE w2c_golf unshield lzma7z ${SDL2_TARGET} ZLIB::ZLIB OpenGL::GL)
+target_link_libraries(SimGolf PRIVATE w2c_golf unshield lzma7z ${SDL2_TARGET} ZLIB::ZLIB)
+if(NOT IOS_BUILD)
+  find_package(OpenGL REQUIRED)
+  target_link_libraries(SimGolf PRIVATE OpenGL::GL)
+endif()

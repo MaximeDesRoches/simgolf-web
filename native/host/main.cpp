@@ -74,6 +74,9 @@ int main(int argc, char **argv) {
   }
 
   SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
+#ifdef __IPHONEOS__
+  SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");   // imports.cpp turns touches into clicks
+#endif
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS) != 0) return fail(SDL_GetError());
 
   if (data_dir.empty()) {
